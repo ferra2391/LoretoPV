@@ -4,7 +4,10 @@
   <meta charset="UTF-8" />
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- PapaParse per CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root { --card:#fff; --bg:#f6f6f6; --muted:#666; }
     body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color:#111; }
@@ -23,7 +26,7 @@
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati letti in sola lettura dal Google Sheet pubblicato</div>
+    <div class="muted">Dati letti in sola lettura dal Google Sheet (“orari”)</div>
   </header>
 
   <div class="wrap">
@@ -48,14 +51,12 @@
   </div>
 
   <script>
-    // === CONFIGURA QUI ===
+    // === CONFIG ===
     const PUB_ID = "2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w";
-    // Se gli orari sono nella prima scheda usa gid=0, altrimenti metti il gid corretto:
-    const GID = "0";
-    // Endpoint SEMPRE OK (no JSON gviz): TSV testuale
-    const SHEET_TSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/pub?gid=${GID}&single=true&output=tsv`;
+    // Leggiamo la scheda "orari" via CSV (no gid, no JSON gviz)
+    const SHEET_CSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?sheet=orari&tqx=out:csv`;
 
-    // Utility: parsing riga orario tipo "9-17", "12:00-20:00", "9-13 + 16-20"
+    // --- utilità parsing turni ---
     function parseBlocks(str) {
       if (!str) return [];
       return str.split("+").map(s => s.trim()).filter(Boolean);
@@ -97,31 +98,39 @@
       return last ? last.end : null;
     }
 
-    async function loadTSV(url){
+    // parsing data string dd/mm/yyyy → Date
+    function parseItaDate(dstr){
+      if (!dstr) return null;
+      if (/\d{4}-\d{2}-\d{2}/.test(dstr)) return new Date(dstr); // ISO
+      const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return new Date(dstr);
+      const dd = +m[1], mm = +m[2]-1, yyyy = +m[3];
+      return new Date(yyyy, mm, dd);
+    }
+
+    async function fetchCSV(url){
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
-      const text = await res.text();
-      const lines = text.trim().split(/\r?\n/);
-      const rows = lines.map(line => line.split("\t"));
-      return rows;
+      const csvText = await res.text();
+      // PapaParse per CSV robusto
+      const parsed = Papa.parse(csvText, {header:true, skipEmptyLines:true});
+      if (parsed.errors.length) {
+        console.warn("PapaParse errors:", parsed.errors);
+      }
+      return parsed.data; // array di oggetti {col:val}
     }
 
     (async function main(){
-      const rows = await loadTSV(SHEET_TSV);
-      // ci aspettiamo intestazioni tipo: Data | Ilenia | Cinzia | Michela | Vivien | (eventuale DaEvidenziare/Settimana ecc.)
-      const header = rows[0];
-      const dataRows = rows.slice(1).filter(r => r[0]); // solo righe con data valorizzata
+      const rows = await fetchCSV(SHEET_CSV);
+      // Troviamo le colonne utili
+      const headerKeys = rows.length ? Object.keys(rows[0]) : [];
+      const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
+      if (!colData) throw new Error("Colonna 'Data' non trovata nella scheda 'orari'.");
+      // Individua colonne dipendenti (Ilenia/Cinzia/Michela/Vivien)
+      const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
+      const dipendenti = dipCols;
 
-      // Trova colonne utili
-      const idxData = header.findIndex(h => /data/i.test(h));
-      if (idxData === -1) throw new Error("Colonna 'Data' non trovata nel foglio.");
-      // prendi tutte le colonne dopo Data che sono persone (filtriamo eventuali colonne extra tipo DaEvidenziare/Settimana)
-      const candidateCols = header.map((h,i)=>({h,i})).filter(o => o.i!==idxData);
-      // euristica: tieni quattro nomi più comuni; se ne hai di più, adegua pure
-      const dipCols = candidateCols.filter(o => /ilenia|cinzia|michela|vivien/i.test(o.h));
-      const dipendenti = dipCols.map(o => o.h.trim());
-
-      // Statistiche
+      // Statistiche accumulate
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         ore:0, ferie:0, rec:0, riposo:0, "104":0,
@@ -129,38 +138,32 @@
         weekendTurni:0
       });
 
-      for (const r of dataRows){
-        const dstr = r[idxData];
-        // supporto date tipo 01/01/2025 o ISO
-        const parts = dstr.includes("/") ? dstr.split("/") : null;
-        const dt = parts ? new Date(+parts[2], +parts[1]-1, +parts[0]) : new Date(dstr);
+      for (const row of rows){
+        const dt = parseItaDate(row[colData]);
+        if (!dt || isNaN(+dt)) continue;
         const dow = dt.getDay(); // 0=dom, 6=sab
         const isWeekend = (dow===0 || dow===6);
         const isSunday = (dow===0);
 
-        for (const {h,i} of dipCols){
-          const who = h.trim();
-          const turnoRaw = (r[i] || "").toString().trim();
+        for (const dcol of dipCols){
+          const who = dcol;
+          const turnoRaw = (row[dcol] || "").toString().trim();
           const TR = turnoRaw.toUpperCase();
 
-          // conta eventi
           if (TR === "FERIE") stats[who].ferie++;
           else if (TR === "REC") stats[who].rec++;
           else if (TR === "RIPOSO") stats[who].riposo++;
           else if (TR === "104") stats[who]["104"]++;
 
-          // ore
           const ore = hoursFromTurno(turnoRaw);
           stats[who].ore += ore;
 
-          // aperture / chiusure (euristica)
           const sH = startHour(turnoRaw);
           const eH = endHour(turnoRaw);
           if (sH !== null && sH <= 9.1) stats[who].aperture++;
           if (isSunday && sH !== null && sH <= 9.1) stats[who].apertureDomenica++;
           if (eH !== null && eH >= 19.9) stats[who].chiusure++;
 
-          // weekend turni
           if (isWeekend && ore > 0) stats[who].weekendTurni++;
         }
       }
@@ -223,7 +226,7 @@
         options: { responsive:true, maintainAspectRatio:false }
       });
 
-      // Aperture domenicali per dipendente (lista)
+      // Aperture domenicali per dipendente
       const ad = document.getElementById("apertureDomenica");
       let list = `<table>
         <tr><th>Dipendente</th><th>Aperture Domenica</th></tr>`;
@@ -232,9 +235,10 @@
       }
       list += `</table>`;
       ad.innerHTML = list;
+
     })().catch(err=>{
       console.error(err);
-      alert("Errore nel caricamento dati: " + err.message + "\nControlla che il foglio sia pubblico e il gid corretto.");
+      alert("Errore nel caricamento dati: " + err.message + "\n- Verifica che la scheda si chiami esattamente 'orari'\n- Controlla che sia pubblicata in lettura (File > Condividi > Pubblica sul web).");
     });
   </script>
 </body>
