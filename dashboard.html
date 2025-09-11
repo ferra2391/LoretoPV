@@ -26,7 +26,7 @@
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati letti in sola lettura dal Google Sheet (“orari”)</div>
+    <div class="muted">Dati in sola lettura dalla scheda “orari” (CSV pubblicato)</div>
   </header>
 
   <div class="wrap">
@@ -52,9 +52,12 @@
 
   <script>
     // === CONFIG ===
+    // ID pubblico (resta questo, è il tuo link pubblicato)
     const PUB_ID = "2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w";
-    // Leggiamo la scheda "orari" via CSV (no gid, no JSON gviz)
-    const SHEET_CSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/gviz/tq?sheet=orari&tqx=out:csv`;
+    // Prende il gid dalla querystring: .../dashboard.html?gid=NUMERO  (default 0)
+    const GID = new URLSearchParams(location.search).get("gid") || "0";
+    // Endpoint CSV (PUBBLICATO SUL WEB)
+    const SHEET_CSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/pub?gid=${GID}&single=true&output=csv`;
 
     // --- utilità parsing turni ---
     function parseBlocks(str) {
@@ -75,7 +78,7 @@
     function hoursFromTurno(turno) {
       if (!turno) return 0;
       const T = turno.toUpperCase();
-      if (["RIPOSO","REC","FERIE","104"].includes(T)) return 0;
+      if (["RIPOSO","REC","FERIE","104","MALATTIA"].includes(T)) return 0;
       return parseBlocks(turno).reduce((sum,blk)=>{
         const s = parseSpan(blk);
         return sum + (s ? s.hours : 0);
@@ -84,7 +87,7 @@
     function startHour(turno) {
       if (!turno) return null;
       const T = turno.toUpperCase();
-      if (["RIPOSO","REC","FERIE","104"].includes(T)) return null;
+      if (["RIPOSO","REC","FERIE","104","MALATTIA"].includes(T)) return null;
       const blk = parseBlocks(turno)[0];
       const s = parseSpan(blk);
       return s ? s.start : null;
@@ -92,7 +95,7 @@
     function endHour(turno) {
       if (!turno) return null;
       const T = turno.toUpperCase();
-      if (["RIPOSO","REC","FERIE","104"].includes(T)) return null;
+      if (["RIPOSO","REC","FERIE","104","MALATTIA"].includes(T)) return null;
       const blocks = parseBlocks(turno);
       const last = parseSpan(blocks[blocks.length-1]);
       return last ? last.end : null;
@@ -112,7 +115,6 @@
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
       const csvText = await res.text();
-      // PapaParse per CSV robusto
       const parsed = Papa.parse(csvText, {header:true, skipEmptyLines:true});
       if (parsed.errors.length) {
         console.warn("PapaParse errors:", parsed.errors);
@@ -122,10 +124,12 @@
 
     (async function main(){
       const rows = await fetchCSV(SHEET_CSV);
-      // Troviamo le colonne utili
+
+      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
       const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
-      if (!colData) throw new Error("Colonna 'Data' non trovata nella scheda 'orari'.");
+      if (!colData) throw new Error("Colonna 'Data' non trovata.");
+
       // Individua colonne dipendenti (Ilenia/Cinzia/Michela/Vivien)
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols;
@@ -133,7 +137,7 @@
       // Statistiche accumulate
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
-        ore:0, ferie:0, rec:0, riposo:0, "104":0,
+        ore:0, ferie:0, rec:0, riposo:0, "104":0, malattia:0,
         aperture:0, apertureDomenica:0, chiusure:0,
         weekendTurni:0
       });
@@ -154,6 +158,7 @@
           else if (TR === "REC") stats[who].rec++;
           else if (TR === "RIPOSO") stats[who].riposo++;
           else if (TR === "104") stats[who]["104"]++;
+          else if (TR === "MALATTIA") stats[who].malattia++;
 
           const ore = hoursFromTurno(turnoRaw);
           stats[who].ore += ore;
@@ -178,6 +183,7 @@
           <th>REC</th>
           <th>RIPOSO</th>
           <th>104</th>
+          <th>Malattia</th>
           <th>Aperture</th>
           <th>Aperture Domenica</th>
           <th>Chiusure</th>
@@ -192,6 +198,7 @@
           <td>${s.rec}</td>
           <td>${s.riposo}</td>
           <td>${s["104"]}</td>
+          <td>${s.malattia}</td>
           <td>${s.aperture}</td>
           <td>${s.apertureDomenica}</td>
           <td>${s.chiusure}</td>
@@ -218,9 +225,9 @@
       new Chart(document.getElementById("chartEventi"), {
         type: "pie",
         data: {
-          labels: ["Ferie","REC","Riposi","Aperture","Chiusure","Aperture Domenica"],
+          labels: ["Ferie","REC","Riposi","Aperture","Chiusure","Aperture Domenica","Malattia"],
           datasets: [{
-            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("aperture"), sum("chiusure"), sum("apertureDomenica")]
+            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("aperture"), sum("chiusure"), sum("apertureDomenica"), sum("malattia")]
           }]
         },
         options: { responsive:true, maintainAspectRatio:false }
@@ -238,7 +245,9 @@
 
     })().catch(err=>{
       console.error(err);
-      alert("Errore nel caricamento dati: " + err.message + "\n- Verifica che la scheda si chiami esattamente 'orari'\n- Controlla che sia pubblicata in lettura (File > Condividi > Pubblica sul web).");
+      alert("Errore nel caricamento dati: " + err.message +
+        "\n- Controlla che la scheda 'orari' sia PUBBLICATA in CSV (File > Condividi > Pubblica sul web)" +
+        "\n- Se vedi 404, passa il gid giusto nell'URL: ?gid=NUMERO (apri la scheda 'orari' e leggi il #gid nell'URL)");
     });
   </script>
 </body>
