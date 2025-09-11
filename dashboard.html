@@ -26,7 +26,7 @@
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati in sola lettura dalla scheda pubblicata (CSV)</div>
+    <div class="muted">Dati letti dal Google Sheet pubblicato (scheda “orari”).</div>
   </header>
 
   <div class="wrap">
@@ -55,50 +55,80 @@
   </div>
 
   <script>
-    // === CONFIG ===
-    // ID pubblico del tuo link "pubhtml" (rimane identico)
-    const PUB_ID = "2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w";
-    // Prende il gid dalla querystring: .../dashboard.html?gid=NUMERO  (default 0)
-    const GID = new URLSearchParams(location.search).get("gid") || "0";
-    // Endpoint CSV pubblicato sul web (stesso documento della tua pubblicazione "pagina web")
-    const SHEET_CSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/pub?gid=${GID}&single=true&output=csv`;
+    // === CONFIG: il TUO link "pubhtml" resta questo (non cambiare tipo di condivisione) ===
+    const PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml";
+    const SHEET_NAME = "orari"; // nome della scheda da usare
 
-    // parsing dd/mm/yyyy → Date
+    // --- utilità parsing turni testuali ---
     function parseItaDate(dstr){
       if (!dstr) return null;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr); // ISO
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
       const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (!m) return new Date(dstr);
-      const dd = +m[1], mm = +m[2]-1, yyyy = +m[3];
-      return new Date(yyyy, mm, dd);
+      return new Date(+m[3], +m[2]-1, +m[1]);
     }
 
-    async function fetchCSV(url){
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
-      const csvText = await res.text();
-      const parsed = Papa.parse(csvText, {header:true, skipEmptyLines:true});
+    // Trova automaticamente il GID della scheda "orari" analizzando l'HTML pubblicato
+    async function resolveGidFromPubhtml(pubhtmlUrl, wantedName){
+      const res = await fetch(pubhtmlUrl);
+      if (!res.ok) throw new Error(`Impossibile leggere pubhtml (${res.status})`);
+      const html = await res.text();
+
+      // Parse HTML e cerca i link delle schede (tab) con gid
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const links = Array.from(doc.querySelectorAll('a'));
+      // Mappa: nome scheda -> gid
+      const map = new Map();
+      for (const a of links){
+        const text = (a.textContent || "").trim().toLowerCase();
+        const href = a.getAttribute("href") || "";
+        const m = href.match(/gid=(\d+)/);
+        if (m && text) map.set(text, m[1]);
+      }
+      // prova match esatto; in fallback, cerca parziale
+      const exact = map.get(wantedName.toLowerCase());
+      if (exact) return exact;
+      for (const [name,gid] of map.entries()){
+        if (name.includes(wantedName.toLowerCase())) return gid;
+      }
+      throw new Error(`Scheda "${wantedName}" non trovata nel pubhtml`);
+    }
+
+    async function fetchCSVFromPublished(pubId, gid){
+      const csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error(`CSV fetch failed ${res.status}`);
+      const text = await res.text();
+      const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
       if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
-      return parsed.data; // array di oggetti {col:val}
+      return parsed.data; // array di oggetti
     }
 
     (async function main(){
-      const rows = await fetchCSV(SHEET_CSV);
+      // 1) Estraggo il PUB_ID dal tuo pubhtml (è la parte dopo /d/e/)
+      const m = PUBHTML_URL.match(/\/d\/e\/([^/]+)\/pubhtml/);
+      if (!m) throw new Error("PUB_ID non riconosciuto nel link pubhtml.");
+      const PUB_ID = m[1];
 
-      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien (testi: apertura/chiusura/ferie/rec/malattia/riposo/104)
+      // 2) Risolvo automaticamente il gid della scheda "orari"
+      const gid = await resolveGidFromPubhtml(PUBHTML_URL, SHEET_NAME);
+
+      // 3) Scarico la scheda in CSV
+      const rows = await fetchCSVFromPublished(PUB_ID, gid);
+
+      // 4) Individuo le colonne: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
       const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
       if (!colData) throw new Error("Colonna 'Data' non trovata.");
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols;
 
-      // Statistiche (conteggi, non ore, perché i valori sono testuali)
+      // 5) Statistiche (conteggi su eventi testuali)
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         apertura:0, chiusura:0,
         ferie:0, rec:0, riposo:0, "104":0, malattia:0,
-        apertureDomenica:0,
-        turniWeekend:0,        // qualsiasi evento lavorativo nel weekend (apertura/chiusura/altro diverso da riposo/ferie/rec/104/malattia)
+        apertureDomenica:0, turniWeekend:0
       });
 
       for (const row of rows){
@@ -111,26 +141,29 @@
         for (const dcol of dipCols){
           const who = dcol;
           const raw = (row[dcol] || "").toString().trim().toLowerCase();
-
           if (!raw) continue;
+
           if (raw === "ferie") { stats[who].ferie++; continue; }
           if (raw === "rec") { stats[who].rec++; continue; }
           if (raw === "riposo") { stats[who].riposo++; continue; }
           if (raw === "104") { stats[who]["104"]++; continue; }
           if (raw === "malattia") { stats[who].malattia++; continue; }
 
-          // Lavorativi principali
           if (raw === "apertura") {
             stats[who].apertura++;
             if (isSunday) stats[who].apertureDomenica++;
           } else if (raw === "chiusura") {
             stats[who].chiusura++;
           }
-          if (isWeekend) stats[who].turniWeekend++;
+
+          if (isWeekend) {
+            // considera "weekend" qualunque evento lavorativo (non riposo/ferie/rec/104/malattia)
+            stats[who].turniWeekend++;
+          }
         }
       }
 
-      // Tabella riepilogo
+      // 6) Riepilogo HTML
       const el = document.getElementById("riepilogo");
       let html = `<table>
         <tr>
@@ -163,35 +196,36 @@
       html += `</table>`;
       el.innerHTML = html;
 
-      // Grafico Aperture
+      // 7) Grafici
       const labels = dipendenti;
       const apertureData = labels.map(d => stats[d].apertura);
+      const chiusureData = labels.map(d => stats[d].chiusura);
+
       new Chart(document.getElementById("chartAperture"), {
         type: "bar",
         data: { labels, datasets: [{ label: "Aperture", data: apertureData }] },
         options: { responsive:true, maintainAspectRatio:false }
       });
 
-      // Grafico Chiusure
-      const chiusureData = labels.map(d => stats[d].chiusura);
       new Chart(document.getElementById("chartChiusure"), {
         type: "bar",
         data: { labels, datasets: [{ label: "Chiusure", data: chiusureData }] },
         options: { responsive:true, maintainAspectRatio:false }
       });
 
-      // Grafico Eventi complessivi
       const sum = (k) => dipendenti.reduce((acc,d)=>acc+stats[d][k],0);
       new Chart(document.getElementById("chartEventi"), {
         type: "pie",
         data: {
           labels: ["Ferie","REC","Riposi","Malattia","104","Aperture","Chiusure","Aperture Domenica"],
-          datasets: [{ data: [sum("ferie"), sum("rec"), sum("riposo"), sum("malattia"), sum("104"), sum("apertura"), sum("chiusura"), sum("apertureDomenica")] }]
+          datasets: [{
+            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("malattia"), sum("104"),
+                   sum("apertura"), sum("chiusura"), sum("apertureDomenica")]
+          }]
         },
         options: { responsive:true, maintainAspectRatio:false }
       });
 
-      // Aperture domenicali per dipendente
       const ad = document.getElementById("apertureDomenica");
       let list = `<table><tr><th>Dipendente</th><th>Aperture Domenica</th></tr>`;
       for (const d of dipendenti){
@@ -203,9 +237,9 @@
     })().catch(err=>{
       console.error(err);
       alert("Errore nel caricamento dati: " + err.message +
-        "\n- Il documento è già pubblicato sul web: OK" +
-        "\n- Se vedi 404, passa il gid giusto nell’URL: ?gid=NUMERO (apri la scheda e leggi #gid nell’URL di Google Sheets)" +
-        "\n- Il formato deve essere CSV pubblicato: l’URL usa /pub?...&output=csv");
+        "\n- Il documento è già pubblicato (ok). Non devi cambiare il tipo di condivisione." +
+        "\n- Il codice trova da solo la scheda 'orari' e il suo gid dentro il pubhtml." +
+        "\n- Se il nome della scheda cambia, aggiorna la costante SHEET_NAME in alto.");
     });
   </script>
 </body>
