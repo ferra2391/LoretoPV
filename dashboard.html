@@ -6,8 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- PapaParse per CSV -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root { --card:#fff; --bg:#f6f6f6; --muted:#666; }
     body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color:#111; }
@@ -26,7 +24,7 @@
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati letti dal Google Sheet pubblicato (scheda “orari”).</div>
+    <div class="muted">Dati letti dal link pubhtml (senza CSV), scheda già pubblicata.</div>
   </header>
 
   <div class="wrap">
@@ -55,11 +53,72 @@
   </div>
 
   <script>
-    // === CONFIG: il TUO link "pubhtml" resta questo (non cambiare tipo di condivisione) ===
-    const PUBHTML_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml";
-    const SHEET_NAME = "orari"; // nome della scheda da usare
+    // === TUO LINK PUBBLICATO (pubhtml) ===
+    const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-    // --- utilità parsing turni testuali ---
+    // Fallback CORS (se la fetch diretta viene bloccata): usa un proxy read-only
+    function corsFallback(url){
+      // usa r.jina.ai per ottenere l'HTML con CORS abilitato
+      return "https://r.jina.ai/http/" + url.replace(/^https?:\/\//, "");
+    }
+
+    async function fetchPubHtml(url){
+      // 1° tentativo: fetch diretto
+      try{
+        const r = await fetch(url, {credentials:"omit", mode:"cors"});
+        if (r.ok) return await r.text();
+      }catch(e){}
+      // fallback
+      const proxied = corsFallback(url);
+      const r2 = await fetch(proxied);
+      if (!r2.ok) throw new Error("Impossibile leggere il pubhtml ("+r2.status+")");
+      return await r2.text();
+    }
+
+    // Estrae la tabella principale dal pubhtml e restituisce array di righe (array di celle testo)
+    function extractTable(html){
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      // i fogli pubblicati usano tavole con classi tipo "waffle"
+      const tables = Array.from(doc.querySelectorAll("table"));
+      if (!tables.length) throw new Error("Nessuna tabella trovata nel pubhtml.");
+
+      // Scegli la prima tabella che contiene un header con "Data" e almeno 2 nomi noti
+      const guessNames = ["Ilenia","Cinzia","Michela","Vivien"];
+      let target = null;
+      for (const t of tables){
+        const rows = Array.from(t.querySelectorAll("tr")).slice(0,10);
+        for (const tr of rows){
+          const cells = Array.from(tr.children).map(td => td.textContent.trim());
+          const hasData = cells.some(c => /data/i.test(c));
+          const foundNames = guessNames.filter(n => cells.some(c => c.toLowerCase() === n.toLowerCase()));
+          if (hasData && foundNames.length >= 2){ target = t; break; }
+        }
+        if (target) break;
+      }
+      if (!target) target = tables[0];
+
+      const out = [];
+      const trs = Array.from(target.querySelectorAll("tr"));
+      for (const tr of trs){
+        const cells = Array.from(tr.children).map(td => td.textContent.trim());
+        // ignora righe completamente vuote
+        if (cells.every(c => c === "")) continue;
+        out.push(cells);
+      }
+      return out;
+    }
+
+    // Trova l'indice della riga di header (quella che contiene "Data")
+    function findHeaderRow(rows){
+      for (let i=0;i<rows.length;i++){
+        const r = rows[i];
+        if (r.some(c => /data/i.test(c))) return i;
+      }
+      // fallback: prima riga
+      return 0;
+    }
+
+    // parsing data dd/mm/yyyy → Date
     function parseItaDate(dstr){
       if (!dstr) return null;
       if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
@@ -68,62 +127,22 @@
       return new Date(+m[3], +m[2]-1, +m[1]);
     }
 
-    // Trova automaticamente il GID della scheda "orari" analizzando l'HTML pubblicato
-    async function resolveGidFromPubhtml(pubhtmlUrl, wantedName){
-      const res = await fetch(pubhtmlUrl);
-      if (!res.ok) throw new Error(`Impossibile leggere pubhtml (${res.status})`);
-      const html = await res.text();
-
-      // Parse HTML e cerca i link delle schede (tab) con gid
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const links = Array.from(doc.querySelectorAll('a'));
-      // Mappa: nome scheda -> gid
-      const map = new Map();
-      for (const a of links){
-        const text = (a.textContent || "").trim().toLowerCase();
-        const href = a.getAttribute("href") || "";
-        const m = href.match(/gid=(\d+)/);
-        if (m && text) map.set(text, m[1]);
-      }
-      // prova match esatto; in fallback, cerca parziale
-      const exact = map.get(wantedName.toLowerCase());
-      if (exact) return exact;
-      for (const [name,gid] of map.entries()){
-        if (name.includes(wantedName.toLowerCase())) return gid;
-      }
-      throw new Error(`Scheda "${wantedName}" non trovata nel pubhtml`);
-    }
-
-    async function fetchCSVFromPublished(pubId, gid){
-      const csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
-      const res = await fetch(csvUrl);
-      if (!res.ok) throw new Error(`CSV fetch failed ${res.status}`);
-      const text = await res.text();
-      const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
-      if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
-      return parsed.data; // array di oggetti
-    }
-
     (async function main(){
-      // 1) Estraggo il PUB_ID dal tuo pubhtml (è la parte dopo /d/e/)
-      const m = PUBHTML_URL.match(/\/d\/e\/([^/]+)\/pubhtml/);
-      if (!m) throw new Error("PUB_ID non riconosciuto nel link pubhtml.");
-      const PUB_ID = m[1];
+      const html = await fetchPubHtml(PUBHTML);
+      const matrix = extractTable(html);
+      const headerRowIdx = findHeaderRow(matrix);
+      const header = matrix[headerRowIdx].map(h => h.trim());
+      const dataRows = matrix.slice(headerRowIdx+1);
 
-      // 2) Risolvo automaticamente il gid della scheda "orari"
-      const gid = await resolveGidFromPubhtml(PUBHTML_URL, SHEET_NAME);
+      // Trova colonna "Data" e colonne dipendenti
+      const idxData = header.findIndex(h => /data/i.test(h));
+      if (idxData === -1) throw new Error("Colonna 'Data' non trovata nell'header.");
+      const dipCols = header
+        .map((h,i)=>({h,i}))
+        .filter(o => /ilenia|cinzia|michela|vivien/i.test(o.h));
+      const dipendenti = dipCols.map(o => o.h);
 
-      // 3) Scarico la scheda in CSV
-      const rows = await fetchCSVFromPublished(PUB_ID, gid);
-
-      // 4) Individuo le colonne: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
-      const headerKeys = rows.length ? Object.keys(rows[0]) : [];
-      const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
-      if (!colData) throw new Error("Colonna 'Data' non trovata.");
-      const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
-      const dipendenti = dipCols;
-
-      // 5) Statistiche (conteggi su eventi testuali)
+      // Statistiche (conteggi testuali)
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         apertura:0, chiusura:0,
@@ -131,41 +150,38 @@
         apertureDomenica:0, turniWeekend:0
       });
 
-      for (const row of rows){
-        const dt = parseItaDate(row[colData]);
+      for (const r of dataRows){
+        if (!r[idxData]) continue;
+        const dt = parseItaDate(r[idxData]);
         if (!dt || isNaN(+dt)) continue;
         const dow = dt.getDay(); // 0=dom, 6=sab
         const isWeekend = (dow===0 || dow===6);
         const isSunday = (dow===0);
 
-        for (const dcol of dipCols){
-          const who = dcol;
-          const raw = (row[dcol] || "").toString().trim().toLowerCase();
+        for (const {h,i} of dipCols){
+          const raw = (r[i] || "").toString().trim().toLowerCase();
           if (!raw) continue;
 
-          if (raw === "ferie") { stats[who].ferie++; continue; }
-          if (raw === "rec") { stats[who].rec++; continue; }
-          if (raw === "riposo") { stats[who].riposo++; continue; }
-          if (raw === "104") { stats[who]["104"]++; continue; }
-          if (raw === "malattia") { stats[who].malattia++; continue; }
-
+          if (raw === "ferie") { stats[h].ferie++; continue; }
+          if (raw === "rec") { stats[h].rec++; continue; }
+          if (raw === "riposo") { stats[h].riposo++; continue; }
+          if (raw === "104") { stats[h]["104"]++; continue; }
+          if (raw === "malattia") { stats[h].malattia++; continue; }
           if (raw === "apertura") {
-            stats[who].apertura++;
-            if (isSunday) stats[who].apertureDomenica++;
+            stats[h].apertura++;
+            if (isSunday) stats[h].apertureDomenica++;
           } else if (raw === "chiusura") {
-            stats[who].chiusura++;
+            stats[h].chiusura++;
           }
-
-          if (isWeekend) {
-            // considera "weekend" qualunque evento lavorativo (non riposo/ferie/rec/104/malattia)
-            stats[who].turniWeekend++;
+          if (isWeekend && !["ferie","rec","riposo","104","malattia"].includes(raw)){
+            stats[h].turniWeekend++;
           }
         }
       }
 
-      // 6) Riepilogo HTML
+      // Riepilogo
       const el = document.getElementById("riepilogo");
-      let html = `<table>
+      let htmlOut = `<table>
         <tr>
           <th>Dipendente</th>
           <th>Aperture</th>
@@ -180,7 +196,7 @@
         </tr>`;
       for (const d of dipendenti){
         const s = stats[d];
-        html += `<tr>
+        htmlOut += `<tr>
           <td>${d}</td>
           <td>${s.apertura}</td>
           <td>${s.chiusura}</td>
@@ -193,10 +209,10 @@
           <td>${s.turniWeekend}</td>
         </tr>`;
       }
-      html += `</table>`;
-      el.innerHTML = html;
+      htmlOut += `</table>`;
+      el.innerHTML = htmlOut;
 
-      // 7) Grafici
+      // Grafici
       const labels = dipendenti;
       const apertureData = labels.map(d => stats[d].apertura);
       const chiusureData = labels.map(d => stats[d].chiusura);
@@ -226,6 +242,7 @@
         options: { responsive:true, maintainAspectRatio:false }
       });
 
+      // Aperture Domenica
       const ad = document.getElementById("apertureDomenica");
       let list = `<table><tr><th>Dipendente</th><th>Aperture Domenica</th></tr>`;
       for (const d of dipendenti){
@@ -236,10 +253,10 @@
 
     })().catch(err=>{
       console.error(err);
-      alert("Errore nel caricamento dati: " + err.message +
-        "\n- Il documento è già pubblicato (ok). Non devi cambiare il tipo di condivisione." +
-        "\n- Il codice trova da solo la scheda 'orari' e il suo gid dentro il pubhtml." +
-        "\n- Se il nome della scheda cambia, aggiorna la costante SHEET_NAME in alto.");
+      alert("Errore nel caricamento/parse del pubhtml:\n" + err.message +
+        "\n- Il link è quello pubblicato (ok). " +
+        "\n- Questo script legge l'HTML pubblicato e ne estrae la tabella, senza CSV." +
+        "\n- Se hai rinominato le colonne, assicurati che esistano 'Data' e i nomi Ilenia/Cinzia/Michela/Vivien.");
     });
   </script>
 </body>
