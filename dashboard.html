@@ -5,25 +5,26 @@
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root { --card:#fff; --bg:#f6f6f6; --muted:#666; }
-    body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color:#111; }
+    body { font-family: Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
     header { padding:20px 24px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.06); position:sticky; top:0; z-index:10; }
     h1 { margin:0; font-size:20px; }
     .wrap { padding:20px 24px; }
     .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:16px; }
-    .card { background: var(--card); border-radius:16px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.05);}
-    .card h2 { margin:0 0 10px; font-size:16px; color:#222;}
-    table { width:100%; border-collapse: collapse; font-size:14px; }
-    th, td { border-bottom:1px solid #eee; padding:8px; text-align:center; }
+    .card { background:var(--card); border-radius:16px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+    .card h2 { margin:0 0 10px; font-size:16px; color:#222; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { border-bottom:1px solid #eee; padding:8px; text-align:center; }
     th { background:#fafafa; font-weight:600; }
-    .muted { color: var(--muted); font-size:12px; }
+    .muted { color:var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati letti dal link pubblicato (export HTML della scheda, non CSV)</div>
+    <div class="muted">Lettura dal tuo link pubblicato (nessuna modifica alla condivisione).</div>
   </header>
 
   <div class="wrap">
@@ -52,80 +53,48 @@
   </div>
 
   <script>
-    // === Il TUO link pubhtml (con gid) ===
+    // Il TUO link pubblicato (pubhtml) con gid fisso
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-    // Converte pubhtml → export HTML: /pub?gid=...&single=true&output=html
-    function toOutputHtmlUrl(pubhtml){
-      const m = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
-      if(!m) throw new Error("Link pubhtml non riconosciuto.");
-      const pubId = m[1];
-      const gidMatch = pubhtml.match(/[?&]gid=(\d+)/);
-      const gid = gidMatch ? gidMatch[1] : "0";
-      return `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=html`;
+    // Ricavo pubId e gid dal tuo pubhtml
+    function getPubInfo(pubhtml){
+      const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
+      if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
+      const gidm = pubhtml.match(/[?&]gid=(\d+)/);
+      return { pubId: idm[1], gid: gidm ? gidm[1] : "0" };
     }
 
-    function corsFallback(url){
-      return "https://r.jina.ai/http/" + url.replace(/^https?:\/\//,"");
-    }
-
-    async function fetchHtml(url){
-      try{
-        const r = await fetch(url, {mode:"cors", credentials:"omit"});
-        if(r.ok) return await r.text();
-      }catch(e){}
-      const r2 = await fetch(corsFallback(url));
-      if(!r2.ok) throw new Error(`Impossibile leggere HTML (${r2.status})`);
-      return await r2.text();
-    }
-
-    function extractTable(html){
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      // le esportazioni HTML di Sheets hanno tabelle con class "waffle"
-      let table = doc.querySelector("table.waffle");
-      if(!table) table = doc.querySelector("table"); // fallback generico
-      if(!table) throw new Error("Nessuna tabella trovata nell'export HTML.");
-      const rows = [];
-      table.querySelectorAll("tr").forEach(tr=>{
-        const cells = Array.from(tr.children).map(td => (td.textContent||"").trim());
-        if (cells.some(c => c!=="")) rows.push(cells);
-      });
-      return rows;
-    }
-
-    function findHeaderRow(rows){
-      let best = 0, bestScore = -1;
-      const wanted = ["Settimana","Data","Ilenia","Cinzia","Michela","Vivien"];
-      rows.forEach((r,idx)=>{
-        const score = r.reduce((acc,cell)=>acc + (wanted.some(w=>cell.toLowerCase()===w.toLowerCase())?1:0),0);
-        if(score>bestScore){ bestScore=score; best=idx; }
-      });
-      return best;
-    }
-
-    function parseItaDate(dstr){
-      if(!dstr) return null;
-      if(/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
-      const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if(!m) return new Date(dstr);
-      return new Date(+m[3], +m[2]-1, +m[1]);
+    async function fetchCSV(url){
+      const r = await fetch(url);
+      if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
+      const text = await r.text();
+      const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+      if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
+      return parsed.data; // array di oggetti
     }
 
     (async function main(){
-      const htmlUrl = toOutputHtmlUrl(PUBHTML);
-      const html = await fetchHtml(htmlUrl);
-      const matrix = extractTable(html);
+      const { pubId, gid } = getPubInfo(PUBHTML);
 
-      const headerIdx = findHeaderRow(matrix);
-      const header = matrix[headerIdx].map(h=>h.trim());
-      const dataRows = matrix.slice(headerIdx+1);
+      // 1° tentativo: export CSV classico del documento pubblicato
+      let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+      let rows;
+      try {
+        rows = await fetchCSV(csvUrl);
+      } catch (e1) {
+        // 2° tentativo: endpoint gviz → out:csv (stesso documento pubblicato)
+        csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`;
+        rows = await fetchCSV(csvUrl);
+      }
 
-      const idxData = header.findIndex(h => /data/i.test(h));
-      if (idxData === -1) throw new Error("Colonna 'Data' non trovata.");
-      const dipCols = header.map((h,i)=>({h,i})).filter(o => /ilenia|cinzia|michela|vivien/i.test(o.h));
-      const dipendenti = dipCols.map(o=>o.h);
+      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
+      const headerKeys = rows.length ? Object.keys(rows[0]) : [];
+      const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
+      if (!colData) throw new Error("Colonna 'Data' non trovata.");
+      const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
+      const dipendenti = dipCols.slice();
 
-      // Statistiche a conteggio
+      // Statistiche di conteggio (eventi testuali)
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         apertura:0, chiusura:0,
@@ -133,37 +102,45 @@
         apertureDomenica:0, turniWeekend:0
       });
 
-      for (const r of dataRows){
-        const dateCell = r[idxData] || "";
-        const dt = parseItaDate(dateCell);
-        if(!dt || isNaN(+dt)) continue;
-        const dow = dt.getDay(); // 0=dom, 6=sab
+      function parseItaDate(dstr){
+        if (!dstr) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
+        const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (!m) return new Date(dstr);
+        return new Date(+m[3], +m[2]-1, +m[1]);
+      }
+
+      for (const row of rows){
+        const dt = parseItaDate(row[colData]);
+        if (!dt || isNaN(+dt)) continue;
+        const dow = dt.getDay();           // 0=dom, 6=sab
         const isWeekend = (dow===0 || dow===6);
         const isSunday = (dow===0);
 
-        for (const {h,i} of dipCols){
-          const raw = (r[i]||"").toString().trim().toLowerCase();
-          if(!raw) continue;
+        for (const col of dipCols){
+          const raw = (row[col] || "").toString().trim().toLowerCase();
+          if (!raw) continue;
 
-          if (raw==="ferie") { stats[h].ferie++; continue; }
-          if (raw==="rec") { stats[h].rec++; continue; }
-          if (raw==="riposo") { stats[h].riposo++; continue; }
-          if (raw==="104") { stats[h]["104"]++; continue; }
-          if (raw==="malattia") { stats[h].malattia++; continue; }
+          if (raw === "ferie") { stats[col].ferie++; continue; }
+          if (raw === "rec") { stats[col].rec++; continue; }
+          if (raw === "riposo") { stats[col].riposo++; continue; }
+          if (raw === "104") { stats[col]["104"]++; continue; }
+          if (raw === "malattia") { stats[col].malattia++; continue; }
 
-          if (raw==="apertura") {
-            stats[h].apertura++;
-            if (isSunday) stats[h].apertureDomenica++;
-          } else if (raw==="chiusura") {
-            stats[h].chiusura++;
+          if (raw === "apertura") {
+            stats[col].apertura++;
+            if (isSunday) stats[col].apertureDomenica++;
+          } else if (raw === "chiusura") {
+            stats[col].chiusura++;
           }
-          if (isWeekend) stats[h].turniWeekend++;
+
+          if (isWeekend) stats[col].turniWeekend++;
         }
       }
 
       // Riepilogo tabellare
       const el = document.getElementById("riepilogo");
-      let htmlOut = `<table>
+      let html = `<table>
         <tr>
           <th>Dipendente</th>
           <th>Aperture</th>
@@ -178,7 +155,7 @@
         </tr>`;
       for (const d of dipendenti){
         const s = stats[d];
-        htmlOut += `<tr>
+        html += `<tr>
           <td>${d}</td>
           <td>${s.apertura}</td>
           <td>${s.chiusura}</td>
@@ -191,8 +168,8 @@
           <td>${s.turniWeekend}</td>
         </tr>`;
       }
-      htmlOut += `</table>`;
-      el.innerHTML = htmlOut;
+      html += `</table>`;
+      el.innerHTML = html;
 
       // Grafici
       const labels = dipendenti;
@@ -231,9 +208,10 @@
 
     })().catch(err=>{
       console.error(err);
-      alert("Errore: " + err.message +
-        "\n- Sto usando il tuo pubhtml ma in export HTML (output=html), non CSV." +
-        "\n- Verifica che la scheda contenga una tabella con 'Data' e i nomi dei dipendenti.");
+      alert("Errore nel caricamento dati: " + err.message +
+        "\n- Il documento resta pubblicato come pagina web: OK." +
+        "\n- Sto usando l'export CSV dello stesso documento; nessuna modifica alle impostazioni." +
+        "\n- Se cambi nomi colonne, assicurati che esistano 'Data' e i nomi dei dipendenti.");
     });
   </script>
 </body>
