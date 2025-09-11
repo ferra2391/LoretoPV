@@ -1,1 +1,97 @@
 
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Statistiche Orari Profumeria</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { text-align: center; }
+    .container { display: flex; gap: 40px; flex-wrap: wrap; }
+    .chart { width: 45%; min-width: 400px; }
+  </style>
+</head>
+<body>
+  <h1>📊 Statistiche Orari Profumeria</h1>
+  <div id="riepilogo"></div>
+  <div class="container">
+    <canvas id="chartOre" class="chart"></canvas>
+    <canvas id="chartEventi" class="chart"></canvas>
+  </div>
+
+  <script>
+    const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/gviz/tq?tqx=out:json";
+
+    async function caricaDati() {
+      const res = await fetch(sheetURL);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0,-2));
+      const rows = json.table.rows.map(r => r.c.map(c => c ? c.v : ""));
+      const header = rows[0];
+      const dati = rows.slice(1);
+
+      // Troviamo gli indici delle colonne dipendenti
+      const colDip = header.slice(1); // tolta colonna Data
+      const stats = {};
+      colDip.forEach(d => stats[d] = { ore:0, ferie:0, rec:0, riposo:0, aperture:0, chiusure:0, domeniche:0 });
+
+      dati.forEach(r => {
+        const data = new Date(r[0]);
+        const giorno = data.getDay(); // 0=dom
+        colDip.forEach((dip, i) => {
+          const turno = r[i+1].toString().toUpperCase();
+          if(turno.includes("FERIE")) stats[dip].ferie++;
+          if(turno.includes("REC")) stats[dip].rec++;
+          if(turno.includes("RIPOSO")) stats[dip].riposo++;
+          if(giorno===0 && turno!=="RIPOSO" && turno!=="REC") stats[dip].domeniche++;
+          if(turno.match(/^9/)) stats[dip].aperture++;
+          if(turno.match(/20$/)) stats[dip].chiusure++;
+          if(turno.includes("-")) {
+            let [h1,h2]=turno.split("-");
+            stats[dip].ore += (parseInt(h2)-parseInt(h1));
+          }
+        });
+      });
+
+      // Mostriamo riepilogo
+      let html = "<table border=1 cellpadding=5><tr><th>Dipendente</th><th>Ore</th><th>Ferie</th><th>REC</th><th>Riposo</th><th>Aperture</th><th>Chiusure</th><th>Domeniche</th></tr>";
+      for(const dip in stats){
+        let s = stats[dip];
+        html += `<tr><td>${dip}</td><td>${s.ore}</td><td>${s.ferie}</td><td>${s.rec}</td><td>${s.riposo}</td><td>${s.aperture}</td><td>${s.chiusure}</td><td>${s.domeniche}</td></tr>`;
+      }
+      html += "</table>";
+      document.getElementById("riepilogo").innerHTML = html;
+
+      // Grafico ore
+      new Chart(document.getElementById("chartOre"), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(stats),
+          datasets: [{ label: "Ore Totali", data: Object.values(stats).map(s=>s.ore), backgroundColor: 'steelblue' }]
+        }
+      });
+
+      // Grafico eventi
+      new Chart(document.getElementById("chartEventi"), {
+        type: 'pie',
+        data: {
+          labels: ["Ferie","REC","Riposi","Aperture","Chiusure","Domeniche"],
+          datasets: [{
+            data: [
+              Object.values(stats).reduce((a,b)=>a+b.ferie,0),
+              Object.values(stats).reduce((a,b)=>a+b.rec,0),
+              Object.values(stats).reduce((a,b)=>a+b.riposo,0),
+              Object.values(stats).reduce((a,b)=>a+b.aperture,0),
+              Object.values(stats).reduce((a,b)=>a+b.chiusure,0),
+              Object.values(stats).reduce((a,b)=>a+b.domeniche,0),
+            ],
+            backgroundColor: ["orange","green","gray","blue","red","purple"]
+          }]
+        }
+      });
+    }
+    caricaDati();
+  </script>
+</body>
+</html>
