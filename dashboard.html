@@ -1,97 +1,241 @@
-
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Statistiche Orari Profumeria</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { text-align: center; }
-    .container { display: flex; gap: 40px; flex-wrap: wrap; }
-    .chart { width: 45%; min-width: 400px; }
+    :root { --card:#fff; --bg:#f6f6f6; --muted:#666; }
+    body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color:#111; }
+    header { padding:20px 24px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.06); position:sticky; top:0; z-index:10; }
+    h1 { margin:0; font-size:20px; }
+    .wrap { padding:20px 24px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:16px; }
+    .card { background: var(--card); border-radius:16px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.05);}
+    .card h2 { margin:0 0 10px; font-size:16px; color:#222;}
+    table { width:100%; border-collapse: collapse; font-size:14px; }
+    th, td { border-bottom:1px solid #eee; padding:8px; text-align:center; }
+    th { background:#fafafa; font-weight:600; }
+    .muted { color: var(--muted); font-size:12px; }
   </style>
 </head>
 <body>
-  <h1>📊 Statistiche Orari Profumeria</h1>
-  <div id="riepilogo"></div>
-  <div class="container">
-    <canvas id="chartOre" class="chart"></canvas>
-    <canvas id="chartEventi" class="chart"></canvas>
+  <header>
+    <h1>📊 Statistiche Orari Profumeria</h1>
+    <div class="muted">Dati letti in sola lettura dal Google Sheet pubblicato</div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <h2>Riepilogo per dipendente</h2>
+        <div id="riepilogo"></div>
+      </div>
+      <div class="card">
+        <h2>Ore totali per dipendente</h2>
+        <canvas id="chartOre" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h2>Eventi complessivi</h2>
+        <canvas id="chartEventi" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h2>Aperture la domenica (per dipendente)</h2>
+        <div id="apertureDomenica"></div>
+      </div>
+    </div>
   </div>
 
   <script>
-    const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/gviz/tq?tqx=out:json";
+    // === CONFIGURA QUI ===
+    const PUB_ID = "2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w";
+    // Se gli orari sono nella prima scheda usa gid=0, altrimenti metti il gid corretto:
+    const GID = "0";
+    // Endpoint SEMPRE OK (no JSON gviz): TSV testuale
+    const SHEET_TSV = `https://docs.google.com/spreadsheets/d/e/${PUB_ID}/pub?gid=${GID}&single=true&output=tsv`;
 
-    async function caricaDati() {
-      const res = await fetch(sheetURL);
+    // Utility: parsing riga orario tipo "9-17", "12:00-20:00", "9-13 + 16-20"
+    function parseBlocks(str) {
+      if (!str) return [];
+      return str.split("+").map(s => s.trim()).filter(Boolean);
+    }
+    function parseSpan(span) {
+      // "9-17" | "12:00-20:00"
+      const m = span.match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/);
+      if (!m) return null;
+      const h1 = parseInt(m[1],10), m1 = m[2]?parseInt(m[2],10):0;
+      const h2 = parseInt(m[3],10), m2 = m[4]?parseInt(m[4],10):0;
+      const start = h1 + m1/60;
+      const end = h2 + m2/60;
+      const hours = Math.max(0, end - start);
+      return {start, end, hours};
+    }
+    function hoursFromTurno(turno) {
+      if (!turno) return 0;
+      const T = turno.toUpperCase();
+      if (["RIPOSO","REC","FERIE","104"].includes(T)) return 0;
+      return parseBlocks(turno).reduce((sum,blk)=>{
+        const s = parseSpan(blk);
+        return sum + (s ? s.hours : 0);
+      },0);
+    }
+    function startHour(turno) {
+      if (!turno) return null;
+      const T = turno.toUpperCase();
+      if (["RIPOSO","REC","FERIE","104"].includes(T)) return null;
+      const blk = parseBlocks(turno)[0];
+      const s = parseSpan(blk);
+      return s ? s.start : null;
+    }
+    function endHour(turno) {
+      if (!turno) return null;
+      const T = turno.toUpperCase();
+      if (["RIPOSO","REC","FERIE","104"].includes(T)) return null;
+      const blocks = parseBlocks(turno);
+      const last = parseSpan(blocks[blocks.length-1]);
+      return last ? last.end : null;
+    }
+
+    async function loadTSV(url){
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
       const text = await res.text();
-      const json = JSON.parse(text.substr(47).slice(0,-2));
-      const rows = json.table.rows.map(r => r.c.map(c => c ? c.v : ""));
+      const lines = text.trim().split(/\r?\n/);
+      const rows = lines.map(line => line.split("\t"));
+      return rows;
+    }
+
+    (async function main(){
+      const rows = await loadTSV(SHEET_TSV);
+      // ci aspettiamo intestazioni tipo: Data | Ilenia | Cinzia | Michela | Vivien | (eventuale DaEvidenziare/Settimana ecc.)
       const header = rows[0];
-      const dati = rows.slice(1);
+      const dataRows = rows.slice(1).filter(r => r[0]); // solo righe con data valorizzata
 
-      // Troviamo gli indici delle colonne dipendenti
-      const colDip = header.slice(1); // tolta colonna Data
+      // Trova colonne utili
+      const idxData = header.findIndex(h => /data/i.test(h));
+      if (idxData === -1) throw new Error("Colonna 'Data' non trovata nel foglio.");
+      // prendi tutte le colonne dopo Data che sono persone (filtriamo eventuali colonne extra tipo DaEvidenziare/Settimana)
+      const candidateCols = header.map((h,i)=>({h,i})).filter(o => o.i!==idxData);
+      // euristica: tieni quattro nomi più comuni; se ne hai di più, adegua pure
+      const dipCols = candidateCols.filter(o => /ilenia|cinzia|michela|vivien/i.test(o.h));
+      const dipendenti = dipCols.map(o => o.h.trim());
+
+      // Statistiche
       const stats = {};
-      colDip.forEach(d => stats[d] = { ore:0, ferie:0, rec:0, riposo:0, aperture:0, chiusure:0, domeniche:0 });
-
-      dati.forEach(r => {
-        const data = new Date(r[0]);
-        const giorno = data.getDay(); // 0=dom
-        colDip.forEach((dip, i) => {
-          const turno = r[i+1].toString().toUpperCase();
-          if(turno.includes("FERIE")) stats[dip].ferie++;
-          if(turno.includes("REC")) stats[dip].rec++;
-          if(turno.includes("RIPOSO")) stats[dip].riposo++;
-          if(giorno===0 && turno!=="RIPOSO" && turno!=="REC") stats[dip].domeniche++;
-          if(turno.match(/^9/)) stats[dip].aperture++;
-          if(turno.match(/20$/)) stats[dip].chiusure++;
-          if(turno.includes("-")) {
-            let [h1,h2]=turno.split("-");
-            stats[dip].ore += (parseInt(h2)-parseInt(h1));
-          }
-        });
+      dipendenti.forEach(d => stats[d] = {
+        ore:0, ferie:0, rec:0, riposo:0, "104":0,
+        aperture:0, apertureDomenica:0, chiusure:0,
+        weekendTurni:0
       });
 
-      // Mostriamo riepilogo
-      let html = "<table border=1 cellpadding=5><tr><th>Dipendente</th><th>Ore</th><th>Ferie</th><th>REC</th><th>Riposo</th><th>Aperture</th><th>Chiusure</th><th>Domeniche</th></tr>";
-      for(const dip in stats){
-        let s = stats[dip];
-        html += `<tr><td>${dip}</td><td>${s.ore}</td><td>${s.ferie}</td><td>${s.rec}</td><td>${s.riposo}</td><td>${s.aperture}</td><td>${s.chiusure}</td><td>${s.domeniche}</td></tr>`;
+      for (const r of dataRows){
+        const dstr = r[idxData];
+        // supporto date tipo 01/01/2025 o ISO
+        const parts = dstr.includes("/") ? dstr.split("/") : null;
+        const dt = parts ? new Date(+parts[2], +parts[1]-1, +parts[0]) : new Date(dstr);
+        const dow = dt.getDay(); // 0=dom, 6=sab
+        const isWeekend = (dow===0 || dow===6);
+        const isSunday = (dow===0);
+
+        for (const {h,i} of dipCols){
+          const who = h.trim();
+          const turnoRaw = (r[i] || "").toString().trim();
+          const TR = turnoRaw.toUpperCase();
+
+          // conta eventi
+          if (TR === "FERIE") stats[who].ferie++;
+          else if (TR === "REC") stats[who].rec++;
+          else if (TR === "RIPOSO") stats[who].riposo++;
+          else if (TR === "104") stats[who]["104"]++;
+
+          // ore
+          const ore = hoursFromTurno(turnoRaw);
+          stats[who].ore += ore;
+
+          // aperture / chiusure (euristica)
+          const sH = startHour(turnoRaw);
+          const eH = endHour(turnoRaw);
+          if (sH !== null && sH <= 9.1) stats[who].aperture++;
+          if (isSunday && sH !== null && sH <= 9.1) stats[who].apertureDomenica++;
+          if (eH !== null && eH >= 19.9) stats[who].chiusure++;
+
+          // weekend turni
+          if (isWeekend && ore > 0) stats[who].weekendTurni++;
+        }
       }
-      html += "</table>";
-      document.getElementById("riepilogo").innerHTML = html;
+
+      // Tabella riepilogo
+      const el = document.getElementById("riepilogo");
+      let html = `<table>
+        <tr>
+          <th>Dipendente</th>
+          <th>Ore totali</th>
+          <th>Ferie</th>
+          <th>REC</th>
+          <th>RIPOSO</th>
+          <th>104</th>
+          <th>Aperture</th>
+          <th>Aperture Domenica</th>
+          <th>Chiusure</th>
+          <th>Turni Weekend</th>
+        </tr>`;
+      for (const d of dipendenti){
+        const s = stats[d];
+        html += `<tr>
+          <td>${d}</td>
+          <td>${s.ore.toFixed(1)}</td>
+          <td>${s.ferie}</td>
+          <td>${s.rec}</td>
+          <td>${s.riposo}</td>
+          <td>${s["104"]}</td>
+          <td>${s.aperture}</td>
+          <td>${s.apertureDomenica}</td>
+          <td>${s.chiusure}</td>
+          <td>${s.weekendTurni}</td>
+        </tr>`;
+      }
+      html += `</table>`;
+      el.innerHTML = html;
 
       // Grafico ore
+      const labels = dipendenti;
+      const oreData = labels.map(d => stats[d].ore);
       new Chart(document.getElementById("chartOre"), {
-        type: 'bar',
+        type: "bar",
         data: {
-          labels: Object.keys(stats),
-          datasets: [{ label: "Ore Totali", data: Object.values(stats).map(s=>s.ore), backgroundColor: 'steelblue' }]
-        }
+          labels,
+          datasets: [{ label: "Ore totali", data: oreData }]
+        },
+        options: { responsive:true, maintainAspectRatio:false }
       });
 
-      // Grafico eventi
+      // Grafico eventi complessivi
+      const sum = (k) => dipendenti.reduce((acc,d)=>acc+stats[d][k],0);
       new Chart(document.getElementById("chartEventi"), {
-        type: 'pie',
+        type: "pie",
         data: {
-          labels: ["Ferie","REC","Riposi","Aperture","Chiusure","Domeniche"],
+          labels: ["Ferie","REC","Riposi","Aperture","Chiusure","Aperture Domenica"],
           datasets: [{
-            data: [
-              Object.values(stats).reduce((a,b)=>a+b.ferie,0),
-              Object.values(stats).reduce((a,b)=>a+b.rec,0),
-              Object.values(stats).reduce((a,b)=>a+b.riposo,0),
-              Object.values(stats).reduce((a,b)=>a+b.aperture,0),
-              Object.values(stats).reduce((a,b)=>a+b.chiusure,0),
-              Object.values(stats).reduce((a,b)=>a+b.domeniche,0),
-            ],
-            backgroundColor: ["orange","green","gray","blue","red","purple"]
+            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("aperture"), sum("chiusure"), sum("apertureDomenica")]
           }]
-        }
+        },
+        options: { responsive:true, maintainAspectRatio:false }
       });
-    }
-    caricaDati();
+
+      // Aperture domenicali per dipendente (lista)
+      const ad = document.getElementById("apertureDomenica");
+      let list = `<table>
+        <tr><th>Dipendente</th><th>Aperture Domenica</th></tr>`;
+      for (const d of dipendenti){
+        list += `<tr><td>${d}</td><td>${stats[d].apertureDomenica}</td></tr>`;
+      }
+      list += `</table>`;
+      ad.innerHTML = list;
+    })().catch(err=>{
+      console.error(err);
+      alert("Errore nel caricamento dati: " + err.message + "\nControlla che il foglio sia pubblico e il gid corretto.");
+    });
   </script>
 </body>
 </html>
