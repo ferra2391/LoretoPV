@@ -8,7 +8,7 @@
 <style>
   :root{
     --bg:#f6f7fb; --card:#fff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
-    --open:#dff7df; --close:#e5f0ff; --rest:#f3f4f6; --rec:#ffe7ec; --warn:#fff3cd;
+    --open:#dff7df; --close:#e5f0ff; --rest:#f3f4f6; --rec:#ffe7ec;
     --danger:#dc2626; --ok:#16a34a;
   }
   *{box-sizing:border-box}
@@ -19,11 +19,11 @@
   h1{margin:0;font-size:22px}
   .badges{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px}
   .badge{display:inline-flex;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;font-size:12px}
+
   main.wrap{display:flex;flex-direction:column;gap:18px}
   .card{background:#fff;border:1px solid var(--border);border-radius:16px}
   .card-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   .card-title{margin:0;font-size:16px}
-  .controls{display:flex;align-items:center;gap:12px;font-size:14px;flex-wrap:wrap}
   .pill{display:inline-block;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
 
   .grid-wrap{border:1px solid var(--border);border-radius:12px;overflow:auto;background:#fff}
@@ -37,7 +37,6 @@
   .close{background:var(--close)}
   .rest{background:var(--rest);color:#374151}
   .rec{background:var(--rec)}
-  .mini{font-size:12px;color:#374151}
   .delta-ok{color:var(--ok);font-weight:600}
   .delta-bad{color:var(--danger);font-weight:600}
   .alert{background:#fff7e6;border:1px solid #ffe5b4;border-radius:10px;padding:10px 12px;color:#8a6100}
@@ -45,7 +44,7 @@
   .abs-hrs{width:70px}
   .subrow-label{color:#6b7280;font-size:12px}
   .emp-name{font-weight:600}
-  .emp-block-start td{border-top:2px solid #e5e7eb}
+  .divider td{border-top:2px solid #e5e7eb}
 </style>
 </head>
 <body>
@@ -64,7 +63,7 @@
   <section class="card">
     <div class="card-header">
       <h2 class="card-title">Proposta turni (9–13/14/15 • 13/14/15–20) – compresenza automatica</h2>
-      <div class="controls">
+      <div>
         <button id="regen" class="pill">Rigenera</button>
         <button id="applyAbs" class="pill">Applica assenze</button>
       </div>
@@ -105,6 +104,7 @@ const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBz
 const CONTRACT_HOURS = { Ilenia:30, Cinzia:35, Vivien:35, Michela:32 };
 const OPENERS = [{h:6,label:"9–15"},{h:5,label:"9–14"},{h:4,label:"9–13"}];
 const CLOSERS = [{h:7,label:"13–20"},{h:6,label:"14–20"},{h:5,label:"15–20"}];
+let regenTick = 0; // cambia la “permutazione” ad ogni click
 
 // ==== utils date/holidays ====
 function toYMD(d){ return d.toISOString().slice(0,10); }
@@ -148,107 +148,116 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
 
   const tbody=document.getElementById("tbody");
 
+  // ===== skeleton: NESSUN rowspan, etichette sotto il nome =====
+  function rowShift(name, idx){
+    return `<tr class="divider"><td class="emp-name">${name}</td>${
+      Array.from({length:7},(_,d)=>`<td id="cell-${idx}-${d}"><div class="rest">riposo</div></td>`).join("")
+    }</tr>`;
+  }
+  function rowAbs(name, type){
+    return `<tr><td class="subrow-label">${type[0].toUpperCase()+type.slice(1)}</td>${
+      Array.from({length:7},()=>`<td>
+        <select class="abs-hrs" data-type="${type}">
+          <option value="0">—</option><option value="4">4h</option>
+          <option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
+        </select>
+      </td>`).join("")
+    }</tr>`;
+  }
   function renderSkeleton(){
     tbody.innerHTML = dips.map((name, idx)=>{
-      const nameCell = `<td class="emp-name" rowspan="4">${name}</td>`;
-      const shiftRow = `<tr class="emp-block-start" data-emp="${name}" data-rowtype="shift">
-          ${nameCell}
-          ${Array.from({length:7},(_,d)=>`<td id="cell-${idx}-${d}"><div class="rest">riposo</div></td>`).join("")}
-        </tr>`;
-      const ferieRow = `<tr data-emp="${name}" data-rowtype="ferie"><td class="subrow-label">Ferie</td>
-          ${Array.from({length:7},(_,d)=>`<td>
-              <select class="abs-hrs" data-type="ferie" data-name="${name}" data-day="${d}">
-                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
-              </select>
-            </td>`).join("")}
-        </tr>`;
-      const malRow = `<tr data-emp="${name}" data-rowtype="malattia"><td class="subrow-label">Malattia</td>
-          ${Array.from({length:7},(_,d)=>`<td>
-              <select class="abs-hrs" data-type="malattia" data-name="${name}" data-day="${d}">
-                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
-              </select>
-            </td>`).join("")}
-        </tr>`;
-      const a104Row = `<tr data-emp="${name}" data-rowtype="104"><td class="subrow-label">104</td>
-          ${Array.from({length:7},(_,d)=>`<td>
-              <select class="abs-hrs" data-type="104" data-name="${name}" data-day="${d}">
-                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
-              </select>
-            </td>`).join("")}
-        </tr>`;
-      return shiftRow + ferieRow + malRow + a104Row;
+      // 104 solo per Cinzia
+      const has104 = /^cinzia$/i.test(name);
+      return rowShift(name, idx) + rowAbs(name,"ferie") + rowAbs(name,"malattia") + (has104 ? rowAbs(name,"104") : "");
     }).join("");
+    // collega data-name e data-day a runtime leggendo la posizione cella
+    // (lo facciamo nel readAbsences)
   }
   renderSkeleton();
 
-  // -------- FIX 1: calcolo robusto del giorno dalla cella (niente off-by-one) --------
+  // listener: mutual exclusive nello STESSO giorno/utente
   tbody.addEventListener('change', (e)=>{
     const sel = e.target;
     if(!sel.classList.contains('abs-hrs')) return;
     const td = sel.closest('td');
-    let day = Number(sel.dataset.day);
-    const colIdx = td ? td.cellIndex - 1 : day; // prima colonna è la label
-    if(!Number.isNaN(colIdx)) day = colIdx;
-
-    const name = sel.dataset.name;
+    const tr = sel.closest('tr');
+    const rowIdx = Array.from(tbody.children).indexOf(tr); // non usato per logica, solo debug
+    const day = td.cellIndex - 1; // 0 = colonna Nome, giorni iniziano da 1
     const type = sel.dataset.type;
-    const val = Number(sel.value)||0;
-
-    if(val>0){
-      ["ferie","malattia","104"].forEach(t=>{
-        if(t!==type){
-          // azzera SOLO nella stessa colonna
-          const sameCol = Array.from(tbody.querySelectorAll(`tr[data-emp="${name}"] .abs-hrs[data-type="${t}"]`))
-            .find(x => (x.closest('td')?.cellIndex-1) === day);
-          if(sameCol) sameCol.value = "0";
+    if(Number(sel.value)>0){
+      // nella stessa riga gruppo-utente (tre righe sotto lo stesso nome) azzera gli altri tipi nella stessa colonna
+      // prendiamo l'indice del “gruppo” (3 subrighe dopo la riga con il nome)
+      const groupStart = tr.previousElementSibling && tr.previousElementSibling.querySelector('.emp-name')
+        ? Array.from(tbody.children).indexOf(tr.previousElementSibling)
+        : (Array.from(tbody.children).slice(0,rowIdx).reverse().findIndex(x=>x.querySelector('.emp-name'))>=0
+            ? rowIdx - Array.from(tbody.children).slice(0,rowIdx).reverse().findIndex(x=>x.querySelector('.emp-name'))
+            : 0);
+      const subRows = [];
+      for(let i=groupStart+1;i<groupStart+4 && i<tbody.children.length;i++){
+        if(!tbody.children[i]) break;
+        if(tbody.children[i].querySelector('.subrow-label')) subRows.push(tbody.children[i]);
+        else break;
+      }
+      subRows.forEach(r=>{
+        const label = r.querySelector('.subrow-label')?.textContent.trim().toLowerCase();
+        if(label!==type){
+          const cell = r.children[day+1]?.querySelector('.abs-hrs');
+          if(cell) cell.value="0";
         }
       });
     }
   });
 
   document.getElementById("applyAbs").addEventListener("click", ()=>regenerate());
-  document.getElementById("regen").addEventListener("click", ()=>regenerate());
+  document.getElementById("regen").addEventListener("click", ()=>{ regenTick++; regenerate(); });
 
   function readAbsences(){
-    const abs={}; dips.forEach(n=>abs[n]=Array(7).fill({type:"none",hrs:0}));
-    tbody.querySelectorAll('.abs-hrs').forEach(sel=>{
-      const name=sel.dataset.name;
-      const type=sel.dataset.type;
-      const hrs=Number(sel.value)||0;
-
-      // ricalcolo day dalla posizione cella per sicurezza
-      const td = sel.closest('td');
-      let day = Number(sel.dataset.day);
-      const colIdx = td ? td.cellIndex - 1 : day;
-      if(!Number.isNaN(colIdx)) day = colIdx;
-
-      if(hrs>0){
-        abs[name][day] = {type, hrs};
+    // Costruisco per “gruppi” (Nome + subrighe)
+    const abs = {}; dips.forEach(n=>abs[n]=Array(7).fill({type:"none",hrs:0}));
+    let i=0, empIndex=0;
+    while(i < tbody.children.length){
+      const row = tbody.children[i];
+      if(row.querySelector('.emp-name')){
+        const name = dips[empIndex];
+        // successivi 2 o 3 sub-rows
+        let j=i+1;
+        while(j<tbody.children.length && tbody.children[j].querySelector('.subrow-label')){
+          const lab = tbody.children[j].querySelector('.subrow-label').textContent.trim().toLowerCase();
+          for(let d=1; d<=7; d++){
+            const sel = tbody.children[j].children[d]?.querySelector('.abs-hrs');
+            if(!sel) continue;
+            const hrs = Number(sel.value)||0;
+            if(hrs>0){
+              abs[name][d-1] = {type: lab, hrs};
+            }
+          }
+          j++;
+        }
+        empIndex++;
+        i = j;
       } else {
-        // se tutte e tre a 0 in quella colonna → none
-        const trio = ["ferie","malattia","104"].map(t=>{
-          const el = Array.from(tbody.querySelectorAll(`tr[data-emp="${name}"] .abs-hrs[data-type="${t}"]`))
-            .find(x => (x.closest('td')?.cellIndex-1) === day);
-          return el ? Number(el.value)||0 : 0;
-        });
-        if(trio.every(v=>v===0)) abs[name][day] = {type:"none", hrs:0};
+        i++;
       }
-    });
+    }
     return abs;
   }
 
   // ---------- assegnazione ----------
   function assignCell(r, day, html){ document.getElementById(`cell-${r}-${day}`).innerHTML = html; }
+  function cellHTML(r,day){ return document.getElementById(`cell-${r}-${day}`).innerHTML; }
 
   function pickByRemain(cands, used, remain, minH){
+    // tie-break alternato col regenTick
+    const dir = (regenTick%2===0) ? 1 : -1;
     const list = cands.filter(n=>!used.has(n) && remain[n]>=minH)
-                      .sort((a,b)=>remain[b]-remain[a]);
+      .sort((a,b)=> (remain[b]-remain[a]) || dir*b.localeCompare(a));
     return list[0] || null;
   }
 
   function generate(abs){
     // ore residue = contratto - accrediti
     const remain={}, assigned={};
+    const dipsNorm = dips.slice(); // ordine originale
     dips.forEach(n=>{ remain[n]=CONTRACT_HOURS[n]||0; assigned[n]={hours:0}; });
     for(const name of dips){
       for(let d=0; d<7; d++){
@@ -272,19 +281,21 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
       }
     }
 
+    // combinazioni base ruotate dal seed
+    const baseCombos0 = [
+      {openH:5, openLabel:"9–14", closeH:6, closeLabel:"14–20"},
+      {openH:6, openLabel:"9–15", closeH:5, closeLabel:"15–20"},
+      {openH:4, openLabel:"9–13", closeH:7, closeLabel:"13–20"}
+    ];
+    const baseCombos = baseCombos0.map((_,i)=>baseCombos0[(i+regenTick)%baseCombos0.length]);
+
     // base coverage + compresenze
     for(let day=0; day<7; day++){
-      const available = dips.filter(n=>abs[n][day].type==="none");
+      const available = dipsNorm.filter(n=>abs[n][day].type==="none");
       const used = new Set();
 
-      const combos = [
-        {openH:5, openLabel:"9–14", closeH:6, closeLabel:"14–20"},
-        {openH:6, openLabel:"9–15", closeH:5, closeLabel:"15–20"},
-        {openH:4, openLabel:"9–13", closeH:7, closeLabel:"13–20"}
-      ];
-
       let paired=false;
-      for(const c of combos){
+      for(const c of baseCombos){
         const opener = pickByRemain(available, used, remain, c.openH);
         if(!opener) continue;
         used.add(opener);
@@ -302,34 +313,39 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
       }
       if(!paired) continue;
 
-      // compresenze automatiche (fino a 2 aperture + 2 chiusure)
-      const countShifts = ()=>{
+      // compresenze (apre o chiude prima a seconda del seed)
+      const preferCloseFirst = (regenTick%2===1);
+      function countShifts(){
         let opens=0, closes=0;
         for(let r=0;r<dips.length;r++){
-          const html = document.getElementById(`cell-${r}-${day}`).innerHTML;
+          const html = cellHTML(r,day);
           if(/9–1[345]/.test(html)) opens++;
           if(/1[3-5]–20/.test(html)) closes++;
         }
         return {opens, closes};
-      };
-
+      }
       for(let tries=0; tries<4; tries++){
         const cnt = countShifts();
-        // chi ha più ore residue prende extra
-        const pool = dips.filter(n=>abs[n][day].type==="none" && document.getElementById(`cell-${dips.indexOf(n)}-${day}`).innerHTML.includes('riposo'))
-                         .sort((a,b)=>remain[b]-remain[a]);
+        const pool = dipsNorm
+          .filter(n=>abs[n][day].type==="none" && cellHTML(dips.indexOf(n),day).includes('riposo'))
+          .sort((a,b)=> (remain[b]-remain[a]) || (preferCloseFirst?-1:1)*b.localeCompare(a));
 
-        if(cnt.opens<2 && pool.length){
-          const n = pool.shift();
-          const r = dips.indexOf(n);
+        if(preferCloseFirst && cnt.closes<2 && pool.length){
+          const n = pool.shift(), r=dips.indexOf(n);
+          const opt = CLOSERS.find(o=>o.h<=remain[n]) || CLOSERS[CLOSERS.length-1];
+          if(remain[n] >= opt.h){
+            assignCell(r, day, `<div class="close" title="${opt.label}">${opt.label}</div>`);
+            remain[n]-=opt.h; assigned[n].hours+=opt.h;
+          }
+        } else if(cnt.opens<2 && pool.length){
+          const n = pool.shift(), r=dips.indexOf(n);
           const opt = OPENERS.find(o=>o.h<=remain[n]) || OPENERS[OPENERS.length-1];
           if(remain[n] >= opt.h){
             assignCell(r, day, `<div class="open" title="${opt.label}">${opt.label}</div>`);
             remain[n]-=opt.h; assigned[n].hours+=opt.h;
           }
-        } else if(cnt.closes<2 && pool.length){
-          const n = pool.shift();
-          const r = dips.indexOf(n);
+        } else if(!preferCloseFirst && cnt.closes<2 && pool.length){
+          const n = pool.shift(), r=dips.indexOf(n);
           const opt = CLOSERS.find(o=>o.h<=remain[n]) || CLOSERS[CLOSERS.length-1];
           if(remain[n] >= opt.h){
             assignCell(r, day, `<div class="close" title="${opt.label}">${opt.label}</div>`);
@@ -341,9 +357,9 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
       }
     }
 
-    // upgrade durate per chiudere gli ultimi scarti
+    // upgrade durate per chiudere scarti
     function upgrade(r, day){
-      let html = document.getElementById(`cell-${r}-${day}`).innerHTML;
+      let html = cellHTML(r,day);
       const name=dips[r];
       if(html.includes('9–13') && remain[name]>0){ html=html.replace('9–13','9–14'); remain[name]--; assigned[name].hours++; }
       if(html.includes('9–14') && remain[name]>0){ html=html.replace('9–14','9–15'); remain[name]--; assigned[name].hours++; }
@@ -357,7 +373,7 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
         while(remain[dips[r]]>0){
           let before=remain[dips[r]];
           for(let d=0; d<7 && remain[dips[r]]>0; d++){
-            const html = document.getElementById(`cell-${r}-${d}`).innerHTML;
+            const html = cellHTML(r,d);
             if(/9–1[345]|1[3-5]–20/.test(html)) upgrade(r,d);
           }
           if(remain[dips[r]]===before) break;
@@ -367,17 +383,14 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
       if(!moved) break;
     }
 
-    // -------- FIX 2: REC LUN → VEN --------
+    // REC: se ha lavorato domenica, trova primo slot libero LUN→VEN
     for(let r=0;r<dips.length;r++){
-      const sunHtml = document.getElementById(`cell-${r}-6`).innerHTML;
+      const sunHtml = cellHTML(r,6);
       const workedSun = /9–1[345]|1[3-5]–20/.test(sunHtml);
       if(workedSun){
-        for(const d of [0,1,2,3,4]){   // 0=Lun ... 4=Ven
-          const html = document.getElementById(`cell-${r}-${d}`).innerHTML;
-          if(html.includes('riposo')){
-            assignCell(r,d, `<div class="rec" title="REC">REC</div>`);
-            break;
-          }
+        for(const d of [0,1,2,3,4]){ // lun→ven
+          const h = cellHTML(r,d);
+          if(h.includes('riposo')){ assignCell(r,d, `<div class="rec" title="REC">REC</div>`); break; }
         }
       }
     }
@@ -401,18 +414,17 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
     const alertEl=document.getElementById("impossibleAlert");
     if(!allExact){
       alertEl.style.display='block';
-      alertEl.innerHTML = `⚠️ Alcune ore non sono chiuse esattamente. Controlla assenze/turni, poi premi <b>Rigenera</b>.`;
+      alertEl.innerHTML = `⚠️ Alcune ore non sono chiuse esattamente. Modifica assenze o clicca <b>Rigenera</b> per una diversa permutazione.`;
     } else {
       alertEl.style.display='none';
       alertEl.innerHTML='';
     }
   }
 
-  // skeleton e prima generazione
-  function firstRender(){ renderSkeleton(); regenerate(); }
   function regenerate(){ try{ const abs=readAbsences(); const res=generate(abs); render(res);}catch(e){ console.error(e); alert("Errore durante il ricalcolo: "+e.message); } }
 
-  firstRender();
+  // prima generazione
+  regenerate();
 
 })().catch(err=>{
   console.error(err);
