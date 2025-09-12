@@ -8,29 +8,24 @@
   <style>
     :root {
       --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
-      --head:#0b1220; --accent:#1f6feb;
+      --head:#0b1220; --accent:#16a34a; --danger:#dc2626; --balanced-bg:#ebfbee; --balanced-br:#86efac;
     }
     * { box-sizing: border-box; }
-    html, body { height:100%; }
     body {
       margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:var(--bg); color:var(--ink); line-height:1.4;
     }
-    header {
-      position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border);
-    }
+    header { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border); }
     .wrap { max-width:1200px; margin:0 auto; padding:18px 20px; }
     h1 { margin:0; font-size:22px; color:var(--head); }
     .sub { color:var(--muted); font-size:13px; margin-top:6px; }
-
     .badges { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
     .badge {
       display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border);
       background:var(--card); border-radius:999px; font-size:12px; color:#0f172a;
     }
 
-    main.wrap { display:grid; grid-template-columns: 1fr 360px; gap:18px; }
-    @media (max-width: 980px){ main.wrap { grid-template-columns: 1fr; } }
+    main.wrap { display:flex; flex-direction:column; gap:18px; }
 
     .card {
       background:var(--card); border:1px solid var(--border); border-radius:16px;
@@ -40,15 +35,7 @@
     .card-title { margin:0; font-size:16px; color:var(--head); }
     .card-body { padding:12px 16px; }
 
-    .legend { font-size:14px; color:#111; }
-    .legend h3 { margin:0 0 10px; font-size:15px; color:var(--head); }
-    .legend ul { margin:6px 0 12px 18px; padding:0; }
-    .legend li { margin:6px 0; }
-    .legend .muted { color:var(--muted); font-size:12px; }
-
-    .table-wrap {
-      border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff;
-    }
+    .table-wrap { border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff; }
     table { width:100%; border-collapse:separate; border-spacing:0; font-size:15px; }
     thead th {
       position:sticky; top:0; background:#fff; z-index:1; color:#0b1220;
@@ -58,15 +45,26 @@
     tbody tr:nth-child(even){ background:#fafafa; }
     tbody tr:hover { background:#f1f5f9; }
     th:first-child, td:first-child { text-align:left; width:180px; }
-    .num { text-align:right; font-variant-numeric: tabular-nums; }
-    .weeks { text-align:left; white-space:normal; max-width:280px; }
+    .num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+    .weeks { text-align:left; white-space:normal; max-width:320px; }
+    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:6px; vertical-align:middle; }
+    .dot.red { background:var(--danger); box-shadow:0 0 0 2px #fee2e2 inset; }
 
-    .footnote { margin-top:10px; color:var(--muted); font-size:12px; }
-    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-    .btn {
-      border:1px solid var(--border); background:#fff; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:13px;
-    }
-    .btn:hover { border-color:#cfd3e1; }
+    /* colonna "bilanciata": bordo e sfondo verdi */
+    .balanced-col { background:var(--balanced-bg); }
+    th.balanced-col { border-bottom-color:var(--balanced-br); }
+    .balanced-outline { box-shadow: inset 2px 0 0 var(--balanced-br), inset -2px 0 0 var(--balanced-br); }
+
+    .legend { font-size:14px; color:#111; }
+    .legend h3 { margin:0 0 10px; font-size:15px; color:var(--head); }
+    .legend ul { margin:6px 0 12px 18px; padding:0; }
+    .legend li { margin:6px 0; }
+    .legend .muted { color:var(--muted); font-size:12px; }
+
+    /* Tabella note */
+    .notes table { width:100%; border-collapse:separate; border-spacing:0; font-size:15px; }
+    .notes th, .notes td { padding:10px 8px; border-bottom:1px solid var(--border); }
+    .notes thead th { background:#fff; position:sticky; top:0; z-index:1; }
   </style>
 </head>
 <body>
@@ -86,74 +84,82 @@
     <section class="card" aria-label="Riepilogo per dipendente">
       <div class="card-header"><h2 class="card-title">Riepilogo per dipendente</h2></div>
       <div class="card-body">
-        <div class="controls">
-          <button class="btn" id="fontMinus" title="Riduci dimensione tabella">A−</button>
-          <button class="btn" id="fontPlus" title="Aumenta dimensione tabella">A+</button>
-        </div>
         <div class="table-wrap">
-          <table aria-describedby="legend">
+          <table>
             <thead>
               <tr>
                 <th>Dipendente</th>
-                <th class="num">Aperture</th>
-                <th class="num">Chiusure</th>
-                <th class="num">Aperture WE/Festivi</th>
-                <th class="num">Chiusure WE/Festivi</th>
-                <th class="num">Ferie</th>
-                <th class="num">Riposo</th>
-                <th class="num">104</th>
-                <th class="num">Malattia</th>
-                <th class="num">Eventi “a casa” (n)</th>
-                <th class="num">Eventi “a casa” (%)</th>
-                <th class="weeks">Settimane (ISO) eventi</th>
+                <th id="th-ap">Aperture</th>
+                <th id="th-ch">Chiusure</th>
+                <th id="th-apwe">Aperture WE/Festivi</th>
+                <th id="th-chwe">Chiusure WE/Festivi</th>
+                <th id="th-fe">Ferie</th>
+                <th id="th-ri">Riposo</th>
+                <th id="th-104">104</th>
+                <th id="th-ma">Malattia</th>
+                <th id="th-evn">Eventi “a casa” (n)</th>
+                <th>Eventi “a casa” (%)</th>
+                <th>Settimane (ISO) eventi</th>
               </tr>
             </thead>
             <tbody id="riepilogo"></tbody>
           </table>
         </div>
-        <div class="footnote">
-          Tip: scorri orizzontalmente se vedi la tabella tagliata sullo schermo piccolo.
-        </div>
       </div>
     </section>
 
-    <!-- LEGENDA -->
-    <aside class="card" id="legend">
+    <!-- LEGENDA (sotto la tabella) -->
+    <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
       <div class="card-body legend">
         <h3>Eventi “a casa”</h3>
         <ul>
-          <li><b>Cosa conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
-          <li><b>Quando scatta un evento (per settimana ISO):</b>
+          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
+          <li><b>La settimana ISO</b> va da lunedì a domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
+          <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
-              <li><b>Sabato + Domenica</b> entrambi “a casa”.</li>
+              <li><b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
+              <li><b>Sabato + Domenica + Lunedì</b> tutti e tre “a casa”.</li>
+              <li><b>Domenica + Lunedì</b> entrambi “a casa”.</li>
               <li><b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
               <li><b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
+              <li><b>Sabato + Domenica</b> entrambi “a casa” + <b>lunedì successivo festivo</b>.</li>
             </ul>
           </li>
-          <li>Elenco “Settimane (ISO) eventi”: sono i numeri di settimana in cui la condizione è stata soddisfatta
-              (riferite all’<b>anno ISO corrente</b> per la %).</li>
         </ul>
 
-        <h3>Percentuale “eventi a casa”</h3>
+        <h3>Bollini e bilanciamento</h3>
         <ul>
-          <li><b>Formula:</b> (Eventi “a casa” <u>fino alla settimana ISO odierna</u>) / (Numero della settimana ISO odierna) × 100.</li>
-          <li><b>Settimana ISO:</b> lun–dom; la settimana 01 è quella che contiene il 4 gennaio.</li>
+          <li><span class="dot red"></span> = <b>outlier</b> (il valore più sbilanciato rispetto agli altri, alto o basso). Al massimo <b>uno</b> per colonna.</li>
+          <li><b>Colonna in verde</b> = differenze <b>irrilevanti</b> tra dipendenti (distribuzione bilanciata).</li>
         </ul>
-
-        <h3>Weekend & Festivi</h3>
-        <ul>
-          <li><b>Weekend:</b> sabato e domenica.</li>
-          <li><b>Festivi considerati:</b> 1/1, 6/1, Pasqua (dom), Lunedì dell’Angelo, 25/4, 1/5, 2/6, 15/8, 1/11, 8/12, 25/12, 26/12.</li>
-        </ul>
-
-        <p class="muted">Nota: se i dati contengono più anni, la % usa <b>solo</b> le settimane dell’anno ISO corrente; possiamo aggiungere filtri per anno/mese su richiesta.</p>
       </div>
-    </aside>
+    </section>
+
+    <!-- NOTE PROSSIMA SETTIMANA -->
+    <section class="card notes" aria-label="Note per Orari della prossima settimana">
+      <div class="card-header"><h2 class="card-title">Note per Orari della prossima settimana</h2></div>
+      <div class="card-body">
+        <div class="table-wrap" style="max-height:50vh;">
+          <table>
+            <thead>
+              <tr>
+                <th>Voce</th>
+                <th>Consiglio</th>
+              </tr>
+            </thead>
+            <tbody id="notesBody"></tbody>
+          </table>
+        </div>
+        <div class="sub" style="margin-top:8px;">
+          Le note sono derivate dai totali attuali per bilanciare la ripartizione nella prossima settimana.
+        </div>
+      </div>
+    </section>
   </main>
 
   <script>
-    // ——— CONFIG: tuo link pubhtml (immutato) ———
+    // Link pubhtml (immutato)
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
     function getPubInfo(pubhtml){
@@ -162,7 +168,6 @@
       const gidm = pubhtml.match(/[?&]gid=(\d+)/);
       return { pubId: idm[1], gid: gidm ? gidm[1] : "0" };
     }
-
     async function fetchCSV(url){
       const r = await fetch(url);
       if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
@@ -197,12 +202,10 @@
       return d.getFullYear();
     }
 
-    // Pasqua + festivi Italia
+    // Pasqua + Festivi ITA
     function easterSunday(year){
-      const a=year%19, b=Math.floor(year/100), c=year%100, d=Math.floor(b/4), e=b%4;
-      const f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3);
-      const h=(19*a+b-d-g+15)%30, i=Math.floor(c/4), k=c%4;
-      const l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451);
+      const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25);
+      const g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
       const month=Math.floor((h+l-7*m+114)/31), day=((h+l-7*m+114)%31)+1;
       return new Date(year, month-1, day);
     }
@@ -219,18 +222,6 @@
       return holidaysMap.get(y).has(toYMD(date));
     }
 
-    // UI helpers: font size controls
-    (function fontControls(){
-      const tbl = document.querySelector("table");
-      const plus = document.getElementById("fontPlus");
-      const minus = document.getElementById("fontMinus");
-      let size = 15;
-      function apply(){ tbl.style.fontSize = size + "px"; }
-      plus.onclick = ()=>{ size = Math.min(18, size+1); apply(); };
-      minus.onclick = ()=>{ size = Math.max(12, size-1); apply(); };
-      apply();
-    })();
-
     (async function main(){
       // Badges
       const now = new Date();
@@ -238,7 +229,6 @@
       document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
 
       const { pubId, gid } = getPubInfo(PUBHTML);
-      // CSV export (fallback gviz CSV)
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
       try { rows = await fetchCSV(csvUrl); }
@@ -302,11 +292,9 @@
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
 
-      function weekKey(date){
-        return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`;
-      }
+      function weekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Eventi per settimana (ancorati alla domenica)
+      // Eventi “a casa” — combinazioni richieste (ancoraggio alla domenica)
       for (const ymd of allDates){
         const d = new Date(ymd);
         if (d.getDay() !== 0) continue; // solo domeniche
@@ -316,26 +304,60 @@
         const wKey = weekKey(sun);
 
         for (const col of dipCols){
+          const friHome = isHome(get(toYMD(fri), col));
           const satHome = isHome(get(toYMD(sat), col));
           const sunHome = isHome(get(toYMD(sun), col));
-          const cond1 = satHome && sunHome;
-          const cond2 = sunHome && monHoliday;
-          const cond3 = friHoliday && satHome && sunHome;
-          if (cond1 || cond2 || cond3){
+          const monHome = isHome(get(toYMD(mon), col));
+
+          const condA = friHome && satHome && sunHome;                         // Ven+Sab+Dom tutti a casa
+          const condB = satHome && sunHome && monHome;                         // Sab+Dom+Lun tutti a casa
+          const condC = sunHome && monHome;                                    // Dom+Lun entrambi a casa
+          const condD = sunHome && monHoliday;                                 // Dom a casa + Lun festivo
+          const condE = friHoliday && satHome && sunHome;                      // Ven festivo + Sab a casa + Dom a casa
+          const condF = satHome && sunHome && monHoliday;                      // Sab+Dom a casa + Lun festivo
+
+          if (condA || condB || condC || condD || condE || condF){
             stats[col].eventsWeeksAll.add(wKey);
           }
         }
       }
 
-      // Render tabella
+      // % eventi a casa rispetto alla settimana ISO odierna (anno ISO corrente)
       const today = new Date();
       const curW = isoWeek(today), curY = isoWeekYear(today);
 
-      const tbody = document.getElementById("riepilogo");
-      tbody.innerHTML = dipendenti.map(d => {
+      // Funzioni per bollini/verde (bilanciamento)
+      function assessBalance(values){
+        const min = Math.min(...values), max = Math.max(...values);
+        const mean = values.reduce((a,b)=>a+b,0)/values.length || 0;
+        const range = max - min;
+        const tol = Math.max(2, 0.15 * mean); // differenza irrilevante: <= 2 unità o <= 15% della media
+        if (range <= tol) return { balanced:true, outIndex:null };
+        const idxMax = values.indexOf(max), idxMin = values.indexOf(min);
+        const devMax = Math.abs(max - mean), devMin = Math.abs(min - mean);
+        return { balanced:false, outIndex: devMax >= devMin ? idxMax : idxMin };
+      }
+
+      // Prepara dataset per colonne “valutate”
+      const metrics = [
+        { key:"aperture", th:"th-ap", label:"Aperture" },
+        { key:"chiusure", th:"th-ch", label:"Chiusure" },
+        { key:"apertureWEFest", th:"th-apwe", label:"Aperture WE/Festivi" },
+        { key:"chiusureWEFest", th:"th-chwe", label:"Chiusure WE/Festivi" },
+        { key:"ferie", th:"th-fe", label:"Ferie" },
+        { key:"riposo", th:"th-ri", label:"Riposo" },
+        { key:"104", th:"th-104", label:"104" },
+        { key:"malattia", th:"th-ma", label:"Malattia" },
+        { key:"_eventsN", th:"th-evn", label:"Eventi a casa (n)" }
+      ];
+
+      // Calcola settimane & % per ogni dipendente
+      const rowsRender = [];
+      const perMetricValues = {}; // key -> array values ordinati come dipendenti
+
+      dipendenti.forEach(d => {
         const s = stats[d];
 
-        // settimane evento per l'anno corrente e fino alla settimana odierna
         const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
           .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
           .filter(o => o.y === curY && o.w <= curW)
@@ -345,20 +367,110 @@
         const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
         const weeksList = weeksThisYearUpToNow.map(o => o.w).join(", ");
 
+        rowsRender.push({
+          dip:d,
+          aperture:s.aperture,
+          chiusure:s.chiusure,
+          apertureWEFest:s.apertureWEFest,
+          chiusureWEFest:s.chiusureWEFest,
+          ferie:s.ferie, riposo:s.riposo, "104":s["104"], malattia:s.malattia,
+          _eventsN:nEvents, _eventsPct:perc, _weeksList:weeksList || "—"
+        });
+      });
+
+      // Raccogli valori per metrica
+      metrics.forEach(m => {
+        perMetricValues[m.key] = rowsRender.map(r => r[m.key]);
+      });
+
+      // Valuta bilanciamento e outlier per colonna
+      const columnStatus = {}; // key -> {balanced, outIndex}
+      metrics.forEach(m => {
+        columnStatus[m.key] = assessBalance(perMetricValues[m.key]);
+        // se bilanciata → colonna in verde
+        if (columnStatus[m.key].balanced) {
+          document.getElementById(m.th)?.classList.add("balanced-col","balanced-outline");
+        }
+      });
+
+      // Render tabella con bollini
+      const tbody = document.getElementById("riepilogo");
+      tbody.innerHTML = rowsRender.map((r, rowIdx) => {
+        function cell(key, isNum=true){
+          const st = columnStatus[key];
+          const val = r[key];
+          const showDot = !st.balanced && st.outIndex === rowIdx; // un solo bollino per colonna
+          const cls = ["num"];
+          if (st.balanced) cls.push("balanced-col","balanced-outline");
+          return `<td class="${isNum ? cls.join(" ") : ""}">
+            ${isNum ? val : r[key]}
+            ${showDot ? '<span class="dot red" title="outlier"></span>' : ''}
+          </td>`;
+        }
         return `<tr>
-          <td>${d}</td>
-          <td class="num">${s.aperture}</td>
-          <td class="num">${s.chiusure}</td>
-          <td class="num">${s.apertureWEFest}</td>
-          <td class="num">${s.chiusureWEFest}</td>
-          <td class="num">${s.ferie}</td>
-          <td class="num">${s.riposo}</td>
-          <td class="num">${s["104"]}</td>
-          <td class="num">${s.malattia}</td>
-          <td class="num">${nEvents}</td>
-          <td class="num">${perc.toFixed(1)}%</td>
-          <td class="weeks">${weeksList || "—"}</td>
+          <td>${r.dip}</td>
+          ${cell("aperture")}
+          ${cell("chiusure")}
+          ${cell("apertureWEFest")}
+          ${cell("chiusureWEFest")}
+          ${cell("ferie")}
+          ${cell("riposo")}
+          ${cell("104")}
+          ${cell("malattia")}
+          ${cell("_eventsN")}
+          <td class="num">${r._eventsPct.toFixed(1)}%</td>
+          <td class="weeks">${r._weeksList}</td>
         </tr>`;
+      }).join("");
+
+      // Applica stile verde anche alle celle di colonne bilanciate
+      // (aggiunto già in render, ma estendiamo anche alle celle header definite sopra)
+      // NOTE: già fatto per th; td sono marcate per colonna dal render.
+
+      // NOTE per prossima settimana (consigli)
+      function adviceForMetric(values, labels, what, weekend=false){
+        // Se bilanciato → no azioni
+        const st = assessBalance(values);
+        if (st.balanced) {
+          return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
+        }
+        const mean = values.reduce((a,b)=>a+b,0)/values.length || 0;
+        const max = Math.max(...values), min = Math.min(...values);
+        const iMax = values.indexOf(max), iMin = values.indexOf(min);
+        const more = labels[iMin];   // chi ne ha meno → avvantaggiare
+        const less = labels[iMax];   // chi ne ha di più → svantaggiare
+        if (weekend) {
+          return `${what}: avvantaggiare ${more} • svantaggiare ${less}`;
+        } else {
+          return `${what}: più a ${more} • meno a ${less}`;
+        }
+      }
+
+      // Prepara valori per consigli
+      const labels = dipendenti;
+      const valsAp  = metrics.find(m=>m.key==="aperture") ? perMetricValues["aperture"] : [];
+      const valsCh  = metrics.find(m=>m.key==="chiusure") ? perMetricValues["chiusure"] : [];
+      const valsApW = metrics.find(m=>m.key==="apertureWEFest") ? perMetricValues["apertureWEFest"] : [];
+      const valsChW = metrics.find(m=>m.key==="chiusureWEFest") ? perMetricValues["chiusureWEFest"] : [];
+      const valsEvN = metrics.find(m=>m.key==="_eventsN") ? perMetricValues["_eventsN"] : rowsRender.map(r=>r._eventsN);
+
+      const notes = [
+        adviceForMetric(valsAp, labels, "Aperture"),
+        adviceForMetric(valsCh, labels, "Chiusure"),
+        adviceForMetric(valsApW, labels, "Aperture nel weekend/festivi", true),
+        adviceForMetric(valsChW, labels, "Chiusure nel weekend/festivi", true),
+        (function(){
+          const st = assessBalance(valsEvN);
+          if (st.balanced) return `Eventi "a casa": distribuzione bilanciata.`;
+          const max = Math.max(...valsEvN), min = Math.min(...valsEvN);
+          const iMax = valsEvN.indexOf(max), iMin = valsEvN.indexOf(min);
+          return `Eventi "a casa": in eccesso ${labels[iMax]} • in difetto ${labels[iMin]}`;
+        })()
+      ];
+
+      document.getElementById("notesBody").innerHTML = notes.map(n => {
+        const [title, ...rest] = n.split(": ");
+        return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
       }).join("");
 
     })().catch(err=>{
