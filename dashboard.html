@@ -210,7 +210,8 @@
       }
 
       // Funzione helper “a casa”
-      const isHome = (val) => ["ferie","riposo","104"].includes((val||"").toString().toLowerCase());
+      const isHome = (val) =>
+  ["ferie","riposo","104","malattia"].includes((val || "").toString().toLowerCase());
 
       // Analisi eventi “a casa” per weekend lungo
       // Regole:
