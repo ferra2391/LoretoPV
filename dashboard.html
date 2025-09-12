@@ -15,10 +15,13 @@
     body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink) }
     header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
     .wrap{ max-width:1200px; margin:0 auto; padding:18px 20px }
-    h1{ margin:0; font-size:22px; color:var(--head) }
-    .sub{ color:var(--muted); font-size:13px; margin-top:6px }
-    .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px }
+
+    /* HEADER centrato */
+    header .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
+    h1{ margin:0; font-size:22px; color:var(--head); }
+    .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; justify-content:center; }
     .badge{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); background:var(--card); border-radius:999px; font-size:12px }
+
     main.wrap{ display:flex; flex-direction:column; gap:18px }
 
     .card{ background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:0 1px 6px rgba(0,0,0,.04) }
@@ -74,7 +77,6 @@
   <header>
     <div class="wrap">
       <h1>📊 Statistiche Orari Profumeria</h1>
-      <div class="sub">Dati dal foglio Google pubblicato (lettura automatica, nessuna modifica alla condivisione).</div>
       <div class="badges">
         <div class="badge" id="isoBadge">Settimana ISO: …</div>
         <div class="badge" id="updBadge">Aggiornato: …</div>
@@ -148,7 +150,7 @@
           </table>
         </div>
         <div class="sub" style="margin-top:8px;">
-          Le note confrontano tutti i dipendenti con l’<b>outlier</b> della colonna (alto o basso) e suggeriscono “aumentare”/“diminuire”.
+          Le note confrontano tutti i dipendenti con l’<b>outlier</b> della colonna (alto o basso) e suggeriscono “aumentare a” / “diminuire a”.
         </div>
       </div>
     </section>
@@ -237,7 +239,7 @@
       const dipendenti = dipCols.slice();
 
       // Indice per data
-      const byDate = new Map(); // YYYY-MM-DD -> { col: valueLower }
+      const byDate = new Map();
       const holidaysMap = new Map();
 
       // Stat
@@ -254,7 +256,7 @@
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
         const ymd = toYMD(dt);
-        const dow = dt.getDay(); // 0=dom,6=sab
+        const dow = dt.getDay();
         const weekend = (dow===0 || dow===6);
         const festivo = isHoliday(dt, holidaysMap);
         if (!byDate.has(ymd)) byDate.set(ymd, {});
@@ -266,11 +268,9 @@
 
           if (!raw) continue;
           if (raw === "apertura") {
-            stats[col].aperture++;
-            if (weekend || festivo) stats[col].apertureWEFest++;
+            stats[col].aperture++; if (weekend || festivo) stats[col].apertureWEFest++;
           } else if (raw === "chiusura") {
-            stats[col].chiusure++;
-            if (weekend || festivo) stats[col].chiusureWEFest++;
+            stats[col].chiusure++; if (weekend || festivo) stats[col].chiusureWEFest++;
           } else if (raw === "ferie") {
             stats[col].ferie++;
           } else if (raw === "riposo") {
@@ -287,7 +287,6 @@
       const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
-
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
       // Eventi “a casa” — combinazioni richieste
@@ -343,7 +342,7 @@
         };
       });
 
-      // Colonne valutate con bollini (inclusi Eventi a casa n), NO bollini su riposo/104/malattia
+      // Colonne valutate con bollini (incluso Eventi a casa n), NO bollini su riposo/104/malattia
       const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
       const headerIdByKey = {
         aperture:"th-ap", chiusure:"th-ch", apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
@@ -354,13 +353,11 @@
       function assessBalanceShares(values){
         const sum = values.reduce((a,b)=>a+b,0);
         if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
-
         const shares = values.map(v => v / sum);
         const maxShare = Math.max(...shares);
         const minShare = Math.min(...shares);
         const spread = maxShare - minShare;
         const balanced = spread <= 0.05;   // 5 punti percentuali
-
         let outIndex = null;
         if (!balanced){
           const mean = 1 / shares.length;
@@ -397,7 +394,6 @@
           const ringCls = (!st || st.balanced || st.outIndex !== rowIdx) ? 'ring' : 'ring red';
           const tdCls = ['num'];
           if (extraCls) tdCls.push(extraCls);
-          // colonna bilanciata → sfondo verde anche per celle
           if (isDotCol && st && st.balanced) tdCls.push('balanced-col','balanced-outline');
           const content = isNum ? `<span class="${ringCls}">${val}</span>` : val;
           return `<td class="${tdCls.join(' ')}">${content}</td>`;
@@ -418,27 +414,28 @@
         </tr>`;
       }).join("");
 
-      // NOTE per prossima settimana — usare aumentare/diminuire rispetto all'outlier, con pari min/max
-      function humanList(names){
-        if (names.length === 1) return names[0];
-        if (names.length === 2) return `${names[0]} e ${names[1]}`;
-        return `${names.slice(0,-1).join(", ")} e ${names.slice(-1)}`;
+      // NOTE per prossima settimana — “aumentare a / diminuire a” con nomi in grassetto e gruppi pari-min/max
+      function humanListBold(names){
+        if (names.length === 1) return `<b>${names[0]}</b>`;
+        if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
+        return names.slice(0,-1).map(n=>`<b>${n}</b>`).join(", ") + ` e <b>${names.slice(-1)[0]}</b>`;
       }
       function adviceObjective(values, labels, what){
         const st = assessBalanceShares(values);
         if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        const shares = values.map(v => v / values.reduce((a,b)=>a+b,0));
-        const mean = 1 / values.length;
+        const sum = values.reduce((a,b)=>a+b,0);
+        const shares = values.map(v => v/sum);
         const max = Math.max(...shares), min = Math.min(...shares);
-        const isHighOut = (st.outIndex !== null) ? (shares[st.outIndex] === max) : false;
-        const outShare = isHighOut ? max : min;
-        const outGroup = labels.filter((_,i)=>shares[i]===outShare);
-        const counterShare = isHighOut ? min : max;
-        const counterGroup = labels.filter((_,i)=>shares[i]===counterShare);
+        const maxGroup = labels.filter((_,i)=>shares[i]===max);
+        const minGroup = labels.filter((_,i)=>shares[i]===min);
 
-        return isHighOut
-          ? `${what}: diminuire ${humanList(outGroup)} • aumentare ${humanList(counterGroup)} (riferimento outlier: ${humanList(outGroup)})`
-          : `${what}: aumentare ${humanList(outGroup)} • diminuire ${humanList(counterGroup)} (riferimento outlier: ${humanList(outGroup)})`;
+        // outlier determinato dalla funzione: se è alto → diminuire lui, aumentare i min; se basso → aumentare lui, diminuire i max
+        const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
+        if (isHighOut){
+          return `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`;
+        } else {
+          return `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
+        }
       }
 
       const labels = dipendenti;
