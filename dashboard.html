@@ -21,6 +21,7 @@
     h1{ margin:0; font-size:22px; color:var(--head); }
     .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; justify-content:center; }
     .badge{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); background:var(--card); border-radius:999px; font-size:12px }
+    .range{ margin-top:6px; color:var(--muted); font-size:12px; }
 
     main.wrap{ display:flex; flex-direction:column; gap:18px }
 
@@ -81,6 +82,7 @@
         <div class="badge" id="isoBadge">Settimana ISO: …</div>
         <div class="badge" id="updBadge">Aggiornato: …</div>
       </div>
+      <div id="rangeInfo" class="range">Dati elaborati dal — al —</div>
     </div>
   </header>
 
@@ -149,8 +151,8 @@
             <tbody id="notesBody"></tbody>
           </table>
         </div>
-        <div class="sub" style="margin-top:8px;">
-          Le note confrontano tutti i dipendenti con l’<b>outlier</b> della colonna (alto o basso) e suggeriscono “aumentare a” / “diminuire a”.
+        <div class="range" style="margin-top:8px;">
+          Le note confrontano tutti i dipendenti con l’<b>outlier</b> della colonna (alto o basso) e suggeriscono “<b>aumentare a</b>” / “<b>diminuire a</b>”.
         </div>
       </div>
     </section>
@@ -224,7 +226,7 @@
       // Badges
       const now = new Date();
       document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
-      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`;
 
       const { pubId, gid } = getPubInfo(PUBHTML);
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
@@ -238,9 +240,10 @@
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols.slice();
 
-      // Indice per data
+      // Indice per data e range (min/max) per "Dati elaborati dal…al…"
       const byDate = new Map();
       const holidaysMap = new Map();
+      let minDate = null, maxDate = null;
 
       // Stat
       const stats = {};
@@ -251,10 +254,14 @@
         eventsWeeksAll: new Set()
       });
 
-      // Conteggi base + indice
+      // Conteggi base + indice + range date
       for (const row of rows){
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
+        // aggiorna range
+        if (!minDate || dt < minDate) minDate = dt;
+        if (!maxDate || dt > maxDate) maxDate = dt;
+
         const ymd = toYMD(dt);
         const dow = dt.getDay();
         const weekend = (dow===0 || dow===6);
@@ -281,6 +288,14 @@
             stats[col].malattia++;
           }
         }
+      }
+
+      // Mostra range date sotto ai badge
+      const rangeEl = document.getElementById('rangeInfo');
+      if (minDate && maxDate){
+        rangeEl.textContent = `Dati elaborati dal ${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al ${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} (secondo il foglio Google)`;
+      } else {
+        rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
       // Helper “a casa”
@@ -429,13 +444,10 @@
         const maxGroup = labels.filter((_,i)=>shares[i]===max);
         const minGroup = labels.filter((_,i)=>shares[i]===min);
 
-        // outlier determinato dalla funzione: se è alto → diminuire lui, aumentare i min; se basso → aumentare lui, diminuire i max
         const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
-        if (isHighOut){
-          return `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`;
-        } else {
-          return `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
-        }
+        return isHighOut
+          ? `${what}: <b>diminuire a</b> ${humanListBold(maxGroup)} • <b>aumentare a</b> ${humanListBold(minGroup)}`
+          : `${what}: <b>aumentare a</b> ${humanListBold(minGroup)} • <b>diminuire a</b> ${humanListBold(maxGroup)}`;
       }
 
       const labels = dipendenti;
