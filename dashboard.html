@@ -4,50 +4,80 @@
   <meta charset="UTF-8" />
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Chart.js per il solo grafico a torta -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- PapaParse per leggere il CSV pubblicato -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root { --card:#fff; --bg:#f6f6f6; --muted:#666; }
-    body { font-family: Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
-    header { padding:20px 24px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.06); position:sticky; top:0; z-index:10; }
-    h1 { margin:0; font-size:20px; }
-    .wrap { padding:20px 24px; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:16px; }
-    .card { background:var(--card); border-radius:16px; padding:16px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
-    .card h2 { margin:0 0 10px; font-size:16px; color:#222; }
-    table { width:100%; border-collapse:collapse; font-size:14px; }
-    th,td { border-bottom:1px solid #eee; padding:8px; text-align:center; }
-    th { background:#fafafa; font-weight:600; }
+    :root { --card:#fff; --bg:#f6f6f6; --muted:#6b7280; --border:#e5e7eb; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
+    header { padding:18px 22px; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.06); position:sticky; top:0; z-index:10; }
+    h1 { margin:0; font-size:18px; }
     .muted { color:var(--muted); font-size:12px; }
+    .wrap { padding:18px 22px; }
+    .grid { display:grid; grid-template-columns: 1fr 420px; gap:16px; }
+    @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
+    .card h2 { margin:0 0 10px; font-size:15px; color:#222; }
+    .table-wrap { max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    thead th { position:sticky; top:0; background:#fff; z-index:1; border-bottom:1px solid var(--border); }
+    th, td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); }
+    tbody tr:nth-child(even){ background:#fafafa; }
+    tbody tr:hover { background:#f3f4f6; }
+    td:first-child, th:first-child { text-align:left; }
+    .kpi { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
+    .pill { background:#f3f4f6; border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:12px; }
+    .center { display:flex; justify-content:center; align-items:center; }
   </style>
 </head>
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Lettura dal tuo link pubblicato (nessuna modifica alla condivisione).</div>
+    <div class="muted">Lettura dal tuo link pubblicato (nessuna modifica alla condivisione). Grafici a barre rimossi.</div>
   </header>
 
   <div class="wrap">
     <div class="grid">
+      <!-- SINISTRA: tabella riepilogo -->
       <div class="card">
         <h2>Riepilogo per dipendente</h2>
-        <div id="riepilogo"></div>
+        <div class="kpi" id="kpi"></div>
+        <div class="table-wrap">
+          <table id="tbl">
+            <thead>
+              <tr>
+                <th>Dipendente</th>
+                <th>Aperture</th>
+                <th>Chiusure</th>
+                <th>Aperture Domenica</th>
+                <th>Ferie</th>
+                <th>REC</th>
+                <th>Riposo</th>
+                <th>104</th>
+                <th>Malattia</th>
+                <th>Turni Weekend</th>
+              </tr>
+            </thead>
+            <tbody id="riepilogo"></tbody>
+          </table>
+        </div>
       </div>
-      <div class="card">
-        <h2>Aperture per dipendente</h2>
-        <canvas id="chartAperture" height="260"></canvas>
-      </div>
-      <div class="card">
-        <h2>Chiusure per dipendente</h2>
-        <canvas id="chartChiusure" height="260"></canvas>
-      </div>
+
+      <!-- DESTRA: torta + tabellina -->
       <div class="card">
         <h2>Eventi complessivi</h2>
-        <canvas id="chartEventi" height="260"></canvas>
-      </div>
-      <div class="card">
-        <h2>Aperture la domenica (per dipendente)</h2>
-        <div id="apertureDomenica"></div>
+        <div class="center" style="height:280px;">
+          <canvas id="chartEventi" height="260" style="max-height:260px; width:100%;"></canvas>
+        </div>
+        <h2 style="margin-top:14px;">Aperture la domenica (per dipendente)</h2>
+        <div class="table-wrap" style="max-height:220px;">
+          <table>
+            <thead><tr><th>Dipendente</th><th>Aperture Domenica</th></tr></thead>
+            <tbody id="apertureDomenica"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -56,7 +86,6 @@
     // Il TUO link pubblicato (pubhtml) con gid fisso
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-    // Ricavo pubId e gid dal tuo pubhtml
     function getPubInfo(pubhtml){
       const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
@@ -73,28 +102,36 @@
       return parsed.data; // array di oggetti
     }
 
+    function parseItaDate(dstr){
+      if (!dstr) return null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
+      const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return new Date(dstr);
+      return new Date(+m[3], +m[2]-1, +m[1]);
+    }
+
     (async function main(){
       const { pubId, gid } = getPubInfo(PUBHTML);
 
-      // 1° tentativo: export CSV classico del documento pubblicato
+      // 1) export CSV del documento pubblicato
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
       try {
         rows = await fetchCSV(csvUrl);
       } catch (e1) {
-        // 2° tentativo: endpoint gviz → out:csv (stesso documento pubblicato)
+        // 2) fallback gviz → out:csv
         csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`;
         rows = await fetchCSV(csvUrl);
       }
 
-      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
+      // colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
       const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
       if (!colData) throw new Error("Colonna 'Data' non trovata.");
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols.slice();
 
-      // Statistiche di conteggio (eventi testuali)
+      // Statistiche (conteggi su eventi testuali)
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         apertura:0, chiusura:0,
@@ -102,18 +139,10 @@
         apertureDomenica:0, turniWeekend:0
       });
 
-      function parseItaDate(dstr){
-        if (!dstr) return null;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
-        const m = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (!m) return new Date(dstr);
-        return new Date(+m[3], +m[2]-1, +m[1]);
-      }
-
       for (const row of rows){
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
-        const dow = dt.getDay();           // 0=dom, 6=sab
+        const dow = dt.getDay(); // 0=dom, 6=sab
         const isWeekend = (dow===0 || dow===6);
         const isSunday = (dow===0);
 
@@ -134,28 +163,30 @@
             stats[col].chiusura++;
           }
 
-          if (isWeekend) stats[col].turniWeekend++;
+          if (isWeekend && !["ferie","rec","riposo","104","malattia"].includes(raw)) {
+            stats[col].turniWeekend++;
+          }
         }
       }
 
-      // Riepilogo tabellare
-      const el = document.getElementById("riepilogo");
-      let html = `<table>
-        <tr>
-          <th>Dipendente</th>
-          <th>Aperture</th>
-          <th>Chiusure</th>
-          <th>Aperture Domenica</th>
-          <th>Ferie</th>
-          <th>REC</th>
-          <th>Riposo</th>
-          <th>104</th>
-          <th>Malattia</th>
-          <th>Turni Weekend</th>
-        </tr>`;
-      for (const d of dipendenti){
+      // KPI rapidi (totali globali)
+      const sum = (k) => dipendenti.reduce((acc,d)=>acc+stats[d][k],0);
+      document.getElementById("kpi").innerHTML = `
+        <span class="pill">Tot. Aperture: <b>${sum("apertura")}</b></span>
+        <span class="pill">Tot. Chiusure: <b>${sum("chiusura")}</b></span>
+        <span class="pill">Tot. Domeniche (aperture): <b>${sum("apertureDomenica")}</b></span>
+        <span class="pill">Tot. Ferie: <b>${sum("ferie")}</b></span>
+        <span class="pill">Tot. REC: <b>${sum("rec")}</b></span>
+        <span class="pill">Tot. Riposi: <b>${sum("riposo")}</b></span>
+        <span class="pill">Tot. 104: <b>${sum("104")}</b></span>
+        <span class="pill">Tot. Malattie: <b>${sum("malattia")}</b></span>
+      `;
+
+      // Tabella riepilogo
+      const tb = document.getElementById("riepilogo");
+      tb.innerHTML = dipendenti.map(d => {
         const s = stats[d];
-        html += `<tr>
+        return `<tr>
           <td>${d}</td>
           <td>${s.apertura}</td>
           <td>${s.chiusura}</td>
@@ -167,51 +198,33 @@
           <td>${s.malattia}</td>
           <td>${s.turniWeekend}</td>
         </tr>`;
-      }
-      html += `</table>`;
-      el.innerHTML = html;
+      }).join("");
 
-      // Grafici
-      const labels = dipendenti;
-      const apertureData = labels.map(d => stats[d].apertura);
-      const chiusureData = labels.map(d => stats[d].chiusura);
-
-      new Chart(document.getElementById("chartAperture"), {
-        type: "bar",
-        data: { labels, datasets: [{ label: "Aperture", data: apertureData }] },
-        options: { responsive:true, maintainAspectRatio:false }
-      });
-
-      new Chart(document.getElementById("chartChiusure"), {
-        type: "bar",
-        data: { labels, datasets: [{ label: "Chiusure", data: chiusureData }] },
-        options: { responsive:true, maintainAspectRatio:false }
-      });
-
-      const sum = (k) => labels.reduce((acc,d)=>acc+stats[d][k],0);
+      // Grafico a torta (eventi complessivi)
       new Chart(document.getElementById("chartEventi"), {
         type: "pie",
         data: {
           labels: ["Ferie","REC","Riposi","Malattia","104","Aperture","Chiusure","Aperture Domenica"],
-          datasets: [{ data: [sum("ferie"), sum("rec"), sum("riposo"), sum("malattia"), sum("104"), sum("apertura"), sum("chiusura"), sum("apertureDomenica")] }]
+          datasets: [{
+            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("malattia"), sum("104"),
+                   sum("apertura"), sum("chiusura"), sum("apertureDomenica")]
+          }]
         },
-        options: { responsive:true, maintainAspectRatio:false }
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{ position:"bottom" } }
+        }
       });
 
+      // Lista aperture domenicali
       const ad = document.getElementById("apertureDomenica");
-      let list = `<table><tr><th>Dipendente</th><th>Aperture Domenica</th></tr>`;
-      for (const d of labels){
-        list += `<tr><td>${d}</td><td>${stats[d].apertureDomenica}</td></tr>`;
-      }
-      list += `</table>`;
-      ad.innerHTML = list;
+      ad.innerHTML = dipendenti.map(d => `<tr><td>${d}</td><td>${stats[d].apertureDomenica}</td></tr>`).join("");
 
     })().catch(err=>{
       console.error(err);
       alert("Errore nel caricamento dati: " + err.message +
-        "\n- Il documento resta pubblicato come pagina web: OK." +
-        "\n- Sto usando l'export CSV dello stesso documento; nessuna modifica alle impostazioni." +
-        "\n- Se cambi nomi colonne, assicurati che esistano 'Data' e i nomi dei dipendenti.");
+        "\n- Il documento è pubblicato come pagina web (ok). " +
+        "\n- Sto leggendo l'export CSV dello stesso documento (nessuna modifica alle impostazioni).");
     });
   </script>
 </body>
