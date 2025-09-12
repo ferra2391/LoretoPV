@@ -4,9 +4,6 @@
   <meta charset="UTF-8" />
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Chart.js per il solo grafico a torta -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- PapaParse per leggere il CSV pubblicato -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
     :root { --card:#fff; --bg:#f6f6f6; --muted:#6b7280; --border:#e5e7eb; }
@@ -16,76 +13,54 @@
     h1 { margin:0; font-size:18px; }
     .muted { color:var(--muted); font-size:12px; }
     .wrap { padding:18px 22px; }
-    .grid { display:grid; grid-template-columns: 1fr 420px; gap:16px; }
-    @media (max-width: 980px){ .grid { grid-template-columns: 1fr; } }
     .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
     .card h2 { margin:0 0 10px; font-size:15px; color:#222; }
-    .table-wrap { max-height:70vh; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+    .table-wrap { max-height:75vh; overflow:auto; border:1px solid var(--border); border-radius:10px; }
     table { width:100%; border-collapse:collapse; font-size:14px; }
     thead th { position:sticky; top:0; background:#fff; z-index:1; border-bottom:1px solid var(--border); }
     th, td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); }
     tbody tr:nth-child(even){ background:#fafafa; }
     tbody tr:hover { background:#f3f4f6; }
     td:first-child, th:first-child { text-align:left; }
-    .kpi { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0 12px; }
-    .pill { background:#f3f4f6; border:1px solid var(--border); padding:6px 10px; border-radius:999px; font-size:12px; }
-    .center { display:flex; justify-content:center; align-items:center; }
   </style>
 </head>
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Lettura dal tuo link pubblicato (nessuna modifica alla condivisione). Grafici a barre rimossi.</div>
+    <div class="muted">Dati letti dal tuo link pubblicato (nessuna modifica alla condivisione).</div>
   </header>
 
   <div class="wrap">
-    <div class="grid">
-      <!-- SINISTRA: tabella riepilogo -->
-      <div class="card">
-        <h2>Riepilogo per dipendente</h2>
-        <div class="kpi" id="kpi"></div>
-        <div class="table-wrap">
-          <table id="tbl">
-            <thead>
-              <tr>
-                <th>Dipendente</th>
-                <th>Aperture</th>
-                <th>Chiusure</th>
-                <th>Aperture Domenica</th>
-                <th>Ferie</th>
-                <th>REC</th>
-                <th>Riposo</th>
-                <th>104</th>
-                <th>Malattia</th>
-                <th>Turni Weekend</th>
-              </tr>
-            </thead>
-            <tbody id="riepilogo"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- DESTRA: torta + tabellina -->
-      <div class="card">
-        <h2>Eventi complessivi</h2>
-        <div class="center" style="height:280px;">
-          <canvas id="chartEventi" height="260" style="max-height:260px; width:100%;"></canvas>
-        </div>
-        <h2 style="margin-top:14px;">Aperture la domenica (per dipendente)</h2>
-        <div class="table-wrap" style="max-height:220px;">
-          <table>
-            <thead><tr><th>Dipendente</th><th>Aperture Domenica</th></tr></thead>
-            <tbody id="apertureDomenica"></tbody>
-          </table>
-        </div>
+    <div class="card">
+      <h2>Riepilogo per dipendente</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Dipendente</th>
+              <th>Aperture</th>
+              <th>Chiusure</th>
+              <th>Aperture Weekend/Festivi</th>
+              <th>Chiusure Weekend/Festivi</th>
+              <th>Ferie</th>
+              <th>Riposo</th>
+              <th>104</th>
+              <th>Malattia</th>
+              <th>Eventi “a casa” (n)</th>
+              <th>Settimane (ISO) eventi</th>
+            </tr>
+          </thead>
+          <tbody id="riepilogo"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
   <script>
-    // Il TUO link pubblicato (pubhtml) con gid fisso
+    // TUO link pubhtml con gid fisso (invariato)
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
+    // Ricava pubId e gid
     function getPubInfo(pubhtml){
       const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
@@ -93,15 +68,17 @@
       return { pubId: idm[1], gid: gidm ? gidm[1] : "0" };
     }
 
+    // Carica CSV dal documento pubblicato (senza cambiare condivisione)
     async function fetchCSV(url){
       const r = await fetch(url);
       if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
       const text = await r.text();
       const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
       if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
-      return parsed.data; // array di oggetti
+      return parsed.data;
     }
 
+    // Data util
     function parseItaDate(dstr){
       if (!dstr) return null;
       if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
@@ -109,17 +86,71 @@
       if (!m) return new Date(dstr);
       return new Date(+m[3], +m[2]-1, +m[1]);
     }
+    function toYMD(d){ return d.toISOString().slice(0,10); }
+    function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+
+    // ISO week number
+    function isoWeek(d){
+      const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const day = dt.getUTCDay() || 7;
+      dt.setUTCDate(dt.getUTCDate() + 4 - day);
+      const yearStart = new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+      return Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+    }
+
+    // Pasqua (algoritmo gregoriano) + Pasquetta
+    function easterSunday(year){
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19*a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2*e + 2*i - h - k) % 7;
+      const m = Math.floor((a + 11*h + 22*l) / 451);
+      const month = Math.floor((h + l - 7*m + 114) / 31); // 3=Mar, 4=Apr
+      const day = ((h + l - 7*m + 114) % 31) + 1;
+      return new Date(year, month-1, day);
+    }
+    function italianHolidays(year){
+      const set = new Set();
+      const add = (m,d)=> set.add(toYMD(new Date(year, m-1, d)));
+      add(1,1);   // Capodanno
+      add(1,6);   // Epifania
+      add(4,25);  // Liberazione
+      add(5,1);   // Lavoro
+      add(6,2);   // Repubblica
+      add(8,15);  // Ferragosto
+      add(11,1);  // Ognissanti
+      add(12,8);  // Immacolata
+      add(12,25); // Natale
+      add(12,26); // S. Stefano
+      const easter = easterSunday(year);
+      const pasquetta = addDays(easter, 1);
+      set.add(toYMD(easter));     // Pasqua (comunque è domenica)
+      set.add(toYMD(pasquetta));  // Lunedì dell'Angelo
+      return set;
+    }
+    function isHoliday(date, holidaysMap){
+      const y = date.getFullYear();
+      if(!holidaysMap.has(y)) holidaysMap.set(y, italianHolidays(y));
+      return holidaysMap.get(y).has(toYMD(date));
+    }
 
     (async function main(){
       const { pubId, gid } = getPubInfo(PUBHTML);
 
-      // 1) export CSV del documento pubblicato
+      // prima via: export CSV del documento pubblicato
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
       try {
         rows = await fetchCSV(csvUrl);
       } catch (e1) {
-        // 2) fallback gviz → out:csv
+        // fallback gviz CSV
         csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`;
         rows = await fetchCSV(csvUrl);
       }
@@ -131,100 +162,117 @@
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols.slice();
 
-      // Statistiche (conteggi su eventi testuali)
+      // Pre-index per data → { per dipendente: stato }
+      const byDate = new Map(); // key YYYY-MM-DD → { colName: rawLower }
+      const holidaysMap = new Map(); // year → Set(YYYY-MM-DD festivi)
+
+      // Statistiche per dipendente
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
-        apertura:0, chiusura:0,
-        ferie:0, rec:0, riposo:0, "104":0, malattia:0,
-        apertureDomenica:0, turniWeekend:0
+        aperture:0, chiusure:0,
+        apertureWEFest:0, chiusureWEFest:0,
+        ferie:0, riposo:0, "104":0, malattia:0,
+        eventsWeeks: new Set() // settimane ISO degli eventi “a casa”
       });
 
+      // Popola indice per data e conteggi base
       for (const row of rows){
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
-        const dow = dt.getDay(); // 0=dom, 6=sab
-        const isWeekend = (dow===0 || dow===6);
-        const isSunday = (dow===0);
+        const ymd = toYMD(dt);
+        const dow = dt.getDay(); // 0=dom,6=sab
+        const weekend = (dow===0 || dow===6);
+        const festivo = isHoliday(dt, holidaysMap);
+        if (!byDate.has(ymd)) byDate.set(ymd, {});
+        const dayObj = byDate.get(ymd);
 
         for (const col of dipCols){
           const raw = (row[col] || "").toString().trim().toLowerCase();
+          dayObj[col] = raw; // salva per controlli successivi
+
           if (!raw) continue;
-
-          if (raw === "ferie") { stats[col].ferie++; continue; }
-          if (raw === "rec") { stats[col].rec++; continue; }
-          if (raw === "riposo") { stats[col].riposo++; continue; }
-          if (raw === "104") { stats[col]["104"]++; continue; }
-          if (raw === "malattia") { stats[col].malattia++; continue; }
-
           if (raw === "apertura") {
-            stats[col].apertura++;
-            if (isSunday) stats[col].apertureDomenica++;
+            stats[col].aperture++;
+            if (weekend || festivo) stats[col].apertureWEFest++;
           } else if (raw === "chiusura") {
-            stats[col].chiusura++;
-          }
-
-          if (isWeekend && !["ferie","rec","riposo","104","malattia"].includes(raw)) {
-            stats[col].turniWeekend++;
+            stats[col].chiusure++;
+            if (weekend || festivo) stats[col].chiusureWEFest++;
+          } else if (raw === "ferie") {
+            stats[col].ferie++;
+          } else if (raw === "riposo") {
+            stats[col].riposo++;
+          } else if (raw === "104") {
+            stats[col]["104"]++;
+          } else if (raw === "malattia") {
+            stats[col].malattia++;
           }
         }
       }
 
-      // KPI rapidi (totali globali)
-      const sum = (k) => dipendenti.reduce((acc,d)=>acc+stats[d][k],0);
-      document.getElementById("kpi").innerHTML = `
-        <span class="pill">Tot. Aperture: <b>${sum("apertura")}</b></span>
-        <span class="pill">Tot. Chiusure: <b>${sum("chiusura")}</b></span>
-        <span class="pill">Tot. Domeniche (aperture): <b>${sum("apertureDomenica")}</b></span>
-        <span class="pill">Tot. Ferie: <b>${sum("ferie")}</b></span>
-        <span class="pill">Tot. REC: <b>${sum("rec")}</b></span>
-        <span class="pill">Tot. Riposi: <b>${sum("riposo")}</b></span>
-        <span class="pill">Tot. 104: <b>${sum("104")}</b></span>
-        <span class="pill">Tot. Malattie: <b>${sum("malattia")}</b></span>
-      `;
+      // Funzione helper “a casa”
+      const isHome = (val) => ["ferie","riposo","104"].includes((val||"").toString().toLowerCase());
 
-      // Tabella riepilogo
-      const tb = document.getElementById("riepilogo");
-      tb.innerHTML = dipendenti.map(d => {
+      // Analisi eventi “a casa” per weekend lungo
+      // Regole:
+      // 1) Sabato+Domenica entrambi "a casa"
+      // 2) Domenica "a casa" + Lunedì successivo festivo
+      // 3) Venerdì festivo + Sabato "a casa" + Domenica "a casa"
+      const allDates = Array.from(byDate.keys()).sort();
+      const byYMD = (ymd)=> byDate.get(ymd) || {};
+
+      for (const ymd of allDates){
+        const dt = new Date(ymd);
+        if (dt.getDay() !== 0) continue; // consideriamo come chiave la DOMENICA del weekend
+        const sun = dt;
+        const sat = addDays(sun, -1);
+        const fri = addDays(sun, -2);
+        const mon = addDays(sun, +1);
+
+        const ymdSun = toYMD(sun), ymdSat = toYMD(sat), ymdFri = toYMD(fri), ymdMon = toYMD(mon);
+        const weekNo = isoWeek(sun);
+
+        for (const col of dipCols){
+          const satHome = isHome(byYMD(ymdSat)[col]);
+          const sunHome = isHome(byYMD(ymdSun)[col]);
+          const friHoliday = isHoliday(fri, holidaysMap);
+          const monHoliday = isHoliday(mon, holidaysMap);
+
+          const cond1 = satHome && sunHome;
+          const cond2 = sunHome && monHoliday;
+          const cond3 = friHoliday && satHome && sunHome;
+
+          if (cond1 || cond2 || cond3){
+            stats[col].eventsWeeks.add(weekNo);
+          }
+        }
+      }
+
+      // Monta tabella
+      const body = document.getElementById("riepilogo");
+      body.innerHTML = dipendenti.map(d => {
         const s = stats[d];
+        const weeks = Array.from(s.eventsWeeks).sort((a,b)=>a-b).join(", ");
+        const nEvents = s.eventsWeeks.size;
         return `<tr>
           <td>${d}</td>
-          <td>${s.apertura}</td>
-          <td>${s.chiusura}</td>
-          <td>${s.apertureDomenica}</td>
+          <td>${s.aperture}</td>
+          <td>${s.chiusure}</td>
+          <td>${s.apertureWEFest}</td>
+          <td>${s.chiusureWEFest}</td>
           <td>${s.ferie}</td>
-          <td>${s.rec}</td>
           <td>${s.riposo}</td>
           <td>${s["104"]}</td>
           <td>${s.malattia}</td>
-          <td>${s.turniWeekend}</td>
+          <td>${nEvents}</td>
+          <td>${weeks}</td>
         </tr>`;
       }).join("");
 
-      // Grafico a torta (eventi complessivi)
-      new Chart(document.getElementById("chartEventi"), {
-        type: "pie",
-        data: {
-          labels: ["Ferie","REC","Riposi","Malattia","104","Aperture","Chiusure","Aperture Domenica"],
-          datasets: [{
-            data: [sum("ferie"), sum("rec"), sum("riposo"), sum("malattia"), sum("104"),
-                   sum("apertura"), sum("chiusura"), sum("apertureDomenica")]
-          }]
-        },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ position:"bottom" } }
-        }
-      });
-
-      // Lista aperture domenicali
-      const ad = document.getElementById("apertureDomenica");
-      ad.innerHTML = dipendenti.map(d => `<tr><td>${d}</td><td>${stats[d].apertureDomenica}</td></tr>`).join("");
-
     })().catch(err=>{
       console.error(err);
-      alert("Errore nel caricamento dati: " + err.message +
-        "\n- Il documento è pubblicato come pagina web (ok). " +
-        "\n- Sto leggendo l'export CSV dello stesso documento (nessuna modifica alle impostazioni).");
+      alert("Errore: " + err.message +
+        "\n- Il documento resta pubblicato come pagina web (OK)." +
+        "\n- Sto leggendo l’export CSV della stessa scheda per calcolare le statistiche.");
     });
   </script>
 </body>
