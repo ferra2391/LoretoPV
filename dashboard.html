@@ -6,68 +6,57 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root {
+    :root{
       --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
       --head:#0b1220; --accent:#16a34a; --danger:#dc2626; --balanced-bg:#ebfbee; --balanced-br:#86efac;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:var(--bg); color:var(--ink); line-height:1.4;
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink) }
+    header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
+    .wrap{ max-width:1200px; margin:0 auto; padding:18px 20px }
+    h1{ margin:0; font-size:22px; color:var(--head) }
+    .sub{ color:var(--muted); font-size:13px; margin-top:6px }
+    .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px }
+    .badge{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border); background:var(--card); border-radius:999px; font-size:12px }
+    main.wrap{ display:flex; flex-direction:column; gap:18px }
+
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow:0 1px 6px rgba(0,0,0,.04) }
+    .card-header{ padding:14px 16px; border-bottom:1px solid var(--border) }
+    .card-title{ margin:0; font-size:16px; color:var(--head) }
+    .card-body{ padding:12px 16px }
+
+    .table-wrap{ border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff }
+    table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px }
+    thead th{ position:sticky; top:0; background:#fff; z-index:1; color:#0b1220; border-bottom:1px solid var(--border); font-weight:700; padding:12px 10px }
+    tbody td{ padding:12px 10px; border-bottom:1px solid var(--border) }
+    tbody tr:nth-child(even){ background:#fafafa }
+    tbody tr:hover{ background:#f1f5f9 }
+    th:first-child,td:first-child{ text-align:left; width:180px }
+    .num{ text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap }
+    .weeks{ text-align:left; white-space:normal; max-width:320px }
+
+    /* cerchietto rosso attorno al numero, ben centrato */
+    .ring{
+      display:inline-flex; align-items:center; justify-content:center;
+      min-width: 2.4ch; padding:2px 6px; line-height:1.2;
+      border:2px solid transparent; border-radius:9999px;
     }
-    header { position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border); }
-    .wrap { max-width:1200px; margin:0 auto; padding:18px 20px; }
-    h1 { margin:0; font-size:22px; color:var(--head); }
-    .sub { color:var(--muted); font-size:13px; margin-top:6px; }
-    .badges { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-    .badge {
-      display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border);
-      background:var(--card); border-radius:999px; font-size:12px; color:#0f172a;
-    }
+    .ring.red{ border-color:var(--danger) }
 
-    main.wrap { display:flex; flex-direction:column; gap:18px; }
+    /* colonna bilanciata (solo per le colonne valutate) */
+    .balanced-col{ background:var(--balanced-bg)!important }
+    th.balanced-col{ border-bottom-color:var(--balanced-br) }
+    .balanced-outline{ box-shadow: inset 2px 0 0 var(--balanced-br), inset -2px 0 0 var(--balanced-br) }
 
-    .card {
-      background:var(--card); border:1px solid var(--border); border-radius:16px;
-      box-shadow: 0 1px 6px rgba(0,0,0,.04);
-    }
-    .card-header { padding:14px 16px; border-bottom:1px solid var(--border); }
-    .card-title { margin:0; font-size:16px; color:var(--head); }
-    .card-body { padding:12px 16px; }
+    .legend{ font-size:14px; color:#111 }
+    .legend h3{ margin:0 0 10px; font-size:15px; color:var(--head) }
+    .legend ul{ margin:6px 0 12px 18px; padding:0 }
+    .legend li{ margin:6px 0 }
+    .legend .muted{ color:var(--muted); font-size:12px }
 
-    .table-wrap { border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff; }
-    table { width:100%; border-collapse:separate; border-spacing:0; font-size:15px; }
-    thead th {
-      position:sticky; top:0; background:#fff; z-index:1; color:#0b1220;
-      border-bottom:1px solid var(--border); font-weight:700; padding:12px 10px;
-    }
-    tbody td { padding:12px 10px; border-bottom:1px solid var(--border); }
-    tbody tr:nth-child(even){ background:#fafafa; }
-    tbody tr:hover { background:#f1f5f9; }
-    th:first-child, td:first-child { text-align:left; width:180px; }
-    /* numeri centrati come richiesto */
-    .num { text-align:center; font-variant-numeric: tabular-nums; white-space:nowrap; }
-    .weeks { text-align:left; white-space:normal; max-width:320px; }
-
-    /* cerchietto rosso attorno al numero (bollino) */
-    .ring { display:inline-block; padding:2px 8px; border:2px solid transparent; border-radius:9999px; line-height:1; }
-    .ring.red { border-color: var(--danger); }
-
-    /* colonna bilanciata → verde tenue */
-    .balanced-col { background:var(--balanced-bg) !important; }
-    th.balanced-col { border-bottom-color:var(--balanced-br); }
-    .balanced-outline { box-shadow: inset 2px 0 0 var(--balanced-br), inset -2px 0 0 var(--balanced-br); }
-
-    .legend { font-size:14px; color:#111; }
-    .legend h3 { margin:0 0 10px; font-size:15px; color:var(--head); }
-    .legend ul { margin:6px 0 12px 18px; padding:0; }
-    .legend li { margin:6px 0; }
-    .legend .muted { color:var(--muted); font-size:12px; }
-
-    /* Tabella note */
-    .notes table { width:100%; border-collapse:separate; border-spacing:0; font-size:15px; }
-    .notes th, .notes td { padding:10px 8px; border-bottom:1px solid var(--border); }
-    .notes thead th { background:#fff; position:sticky; top:0; z-index:1; }
+    .notes table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px }
+    .notes th,.notes td{ padding:10px 8px; border-bottom:1px solid var(--border) }
+    .notes thead th{ background:#fff; position:sticky; top:0; z-index:1 }
   </style>
 </head>
 <body>
@@ -83,7 +72,6 @@
   </header>
 
   <main class="wrap" aria-live="polite">
-    <!-- TABELLONE -->
     <section class="card" aria-label="Riepilogo per dipendente">
       <div class="card-header"><h2 class="card-title">Riepilogo per dipendente</h2></div>
       <div class="card-body">
@@ -111,7 +99,7 @@
       </div>
     </section>
 
-    <!-- LEGENDA (sotto la tabella) -->
+    <!-- LEGENDA -->
     <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
       <div class="card-body legend">
@@ -133,24 +121,18 @@
 
         <h3>Bollini e bilanciamento</h3>
         <ul>
-          <li><span class="ring red">●</span> = <b>outlier</b> (valore più sbilanciato, alto o basso). Al massimo <b>uno</b> per colonna.</li>
-          <li><b>Colonna verde</b> = differenze irrilevanti: ogni quota <code>val/somma</code> è entro ±15 punti percentuali dalla ripartizione equa.</li>
+          <li><span class="ring red">52</span> = <b>outlier</b> (valore più distante dalla quota equa). Al massimo <b>uno</b> per colonna.</li>
+          <li><b>Colonna verde</b> = differenze irrilevanti: <code>max(quota) − min(quota) ≤ 5pp</code>, dove quota = <code>val/somma</code>.</li>
         </ul>
       </div>
     </section>
 
-    <!-- NOTE PROSSIMA SETTIMANA -->
     <section class="card notes" aria-label="Note per Orari della prossima settimana">
       <div class="card-header"><h2 class="card-title">Note per Orari della prossima settimana</h2></div>
       <div class="card-body">
         <div class="table-wrap" style="max-height:50vh;">
           <table>
-            <thead>
-              <tr>
-                <th>Voce</th>
-                <th>Consiglio</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Voce</th><th>Consiglio</th></tr></thead>
             <tbody id="notesBody"></tbody>
           </table>
         </div>
@@ -191,7 +173,7 @@
     function toYMD(d){ return d.toISOString().slice(0,10); }
     function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 
-    // ISO week number + ISO week year
+    // ISO week + year
     function isoWeek(date){
       const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
       const day = d.getUTCDay() || 7;
@@ -297,7 +279,7 @@
 
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Eventi “a casa” — combinazioni richieste (ancoraggio alla domenica)
+      // Eventi “a casa” — combinazioni richieste
       for (const ymd of allDates){
         const d = new Date(ymd);
         if (d.getDay() !== 0) continue; // solo domeniche
@@ -312,12 +294,12 @@
           const sunHome = isHome(get(toYMD(sun), col));
           const monHome = isHome(get(toYMD(mon), col));
 
-          const condA = friHome && satHome && sunHome;                         // Ven+Sab+Dom a casa
-          const condB = satHome && sunHome && monHome;                         // Sab+Dom+Lun a casa
-          const condC = sunHome && monHome;                                    // Dom+Lun a casa
-          const condD = sunHome && monHoliday;                                 // Dom a casa + Lun festivo
-          const condE = friHoliday && satHome && sunHome;                      // Ven festivo + Sab a casa + Dom a casa
-          const condF = satHome && sunHome && monHoliday;                      // Sab+Dom a casa + Lun festivo
+          const condA = friHome && satHome && sunHome;             // Ven+Sab+Dom a casa
+          const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun a casa
+          const condC = sunHome && monHome;                        // Dom+Lun a casa
+          const condD = sunHome && monHoliday;                     // Dom a casa + Lun festivo
+          const condE = friHoliday && satHome && sunHome;          // Ven festivo + Sab a casa + Dom a casa
+          const condF = satHome && sunHome && monHoliday;          // Sab+Dom a casa + Lun festivo
 
           if (condA || condB || condC || condD || condE || condF){
             stats[col].eventsWeeksAll.add(wKey);
@@ -329,7 +311,7 @@
       const today = new Date();
       const curW = isoWeek(today), curY = isoWeekYear(today);
 
-      // Righe da renderizzare
+      // Righe per tabella
       const rowsRender = dipendenti.map(d => {
         const s = stats[d];
         const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
@@ -350,64 +332,62 @@
         };
       });
 
-      // Colonne da valutare (per bollini & bilanciamento)
-      const metrics = [
-        { key:"aperture", th:"th-ap", label:"Aperture" },
-        { key:"chiusure", th:"th-ch", label:"Chiusure" },
-        { key:"apertureWEFest", th:"th-apwe", label:"Aperture WE/Festivi" },
-        { key:"chiusureWEFest", th:"th-chwe", label:"Chiusure WE/Festivi" },
-        { key:"ferie", th:"th-fe", label:"Ferie" },
-        { key:"riposo", th:"th-ri", label:"Riposo" },
-        { key:"104", th:"th-104", label:"104" },
-        { key:"malattia", th:"th-ma", label:"Malattia" },
-        { key:"_eventsN", th:"th-evn", label:"Eventi a casa (n)" }
-      ];
+      // Colonne da valutare con bollini/verde (NO bollini su riposo/104/malattia)
+      const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie"]);
+      const headerIdByKey = {
+        aperture:"th-ap", chiusure:"th-ch",
+        apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
+        ferie:"th-fe", riposo:"th-ri", "104":"th-104", malattia:"th-ma", _eventsN:"th-evn"
+      };
 
-// Colonna bilanciata se (maxShare - minShare) ≤ 0.15
-// outlier = l'estremo (alto o basso) più lontano dalla quota media (1/N)
-function assessBalanceShares(values){
-  const sum = values.reduce((a,b)=>a+b,0);
-  if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
+      // Valutazione bilanciamento (soglia 5pp) e outlier (più lontano da 1/N)
+      function assessBalanceShares(values){
+        const sum = values.reduce((a,b)=>a+b,0);
+        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
 
-  const shares = values.map(v => v / sum);
-  const maxShare = Math.max(...shares);
-  const minShare = Math.min(...shares);
-  const balanced = (maxShare - minShare) <= 0.15; // 15 punti percentuali
+        const shares = values.map(v => v / sum);
+        const maxShare = Math.max(...shares);
+        const minShare = Math.min(...shares);
+        const spread = maxShare - minShare;
+        const balanced = spread <= 0.05;   // 5 punti percentuali
 
-  let outIndex = null;
-  if (!balanced){
-    const mean = 1 / shares.length;
-    const idxMax = shares.indexOf(maxShare);
-    const idxMin = shares.indexOf(minShare);
-    // scegli l'estremo più distante dalla media
-    outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
-  }
-  return { balanced, outIndex, shares };
-}
+        let outIndex = null;
+        if (!balanced){
+          const mean = 1 / shares.length;
+          const idxMax = shares.indexOf(maxShare);
+          const idxMin = shares.indexOf(minShare);
+          outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
+        }
+        return { balanced, outIndex, shares, spread };
+      }
 
-
-      // Calcola valori per metrica
+      // Prepara valori per metrica
       const perMetricValues = {};
-      metrics.forEach(m => perMetricValues[m.key] = rowsRender.map(r => r[m.key]));
+      Object.keys(headerIdByKey).forEach(k => perMetricValues[k] = rowsRender.map(r => r[k]));
 
-      // Stato colonne (bilanciate/outlier)
+      // Stato colonne e header verde (solo per DOT_KEYS)
       const columnStatus = {};
-      metrics.forEach(m => {
-        const st = assessBalanceShares(perMetricValues[m.key]);
-        columnStatus[m.key] = st;
-        if (st.balanced) document.getElementById(m.th)?.classList.add("balanced-col","balanced-outline");
-      });
+      for (const key of DOT_KEYS){
+        const vals = perMetricValues[key];
+        const st = assessBalanceShares(vals);
+        columnStatus[key] = st;
+        if (st.balanced){
+          const th = document.getElementById(headerIdByKey[key]);
+          th?.classList.add("balanced-col","balanced-outline");
+        }
+      }
 
-      // Render tabella: aggiungo il cerchietto rosso attorno al numero solo all'outlier
+      // Render tabella (bollino solo per DOT_KEYS)
       const tbody = document.getElementById("riepilogo");
       tbody.innerHTML = rowsRender.map((r, rowIdx) => {
         function cell(key, isNum=true){
-          const st = columnStatus[key];
+          const isDotCol = DOT_KEYS.has(key);
+          const st = isDotCol ? columnStatus[key] : null;
           const val = r[key];
-          const ring = (!st.balanced && st.outIndex === rowIdx) ? ' ring red' : '';
+          const ringCls = (!st || st.balanced || st.outIndex !== rowIdx) ? 'ring' : 'ring red';
           const tdCls = ['num'];
-          if (st.balanced) tdCls.push('balanced-col','balanced-outline');
-          const content = isNum ? `<span class="ring${ring}">${val}</span>` : val;
+          if (isDotCol && st && st.balanced) tdCls.push('balanced-col','balanced-outline');
+          const content = isNum ? `<span class="${ringCls}">${val}</span>` : val;
           return `<td class="${tdCls.join(' ')}">${content}</td>`;
         }
         return `<tr>
@@ -426,7 +406,7 @@ function assessBalanceShares(values){
         </tr>`;
       }).join("");
 
-      // NOTE per prossima settimana — elenca TUTTI i pari-minimo / pari-massimo
+      // NOTE per prossima settimana — con pari-minimi/massimi
       function humanList(names){
         if (names.length === 1) return names[0];
         if (names.length === 2) return `${names[0]} e ${names[1]}`;
@@ -435,15 +415,12 @@ function assessBalanceShares(values){
       function adviceMulti(values, labels, what, weekend=false){
         const st = assessBalanceShares(values);
         if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        const sum = values.reduce((a,b)=>a+b,0);
         const max = Math.max(...values), min = Math.min(...values);
         const maxGroup = labels.filter((_,i)=>values[i]===max);
         const minGroup = labels.filter((_,i)=>values[i]===min);
-        if (weekend){
-          return `${what}: avvantaggiare ${humanList(minGroup)} • svantaggiare ${humanList(maxGroup)}`;
-        } else {
-          return `${what}: più a ${humanList(minGroup)} • meno a ${humanList(maxGroup)}`;
-        }
+        return weekend
+          ? `${what}: avvantaggiare ${humanList(minGroup)} • svantaggiare ${humanList(maxGroup)}`
+          : `${what}: più a ${humanList(minGroup)} • meno a ${humanList(maxGroup)}`;
       }
 
       const labels = dipendenti;
@@ -462,7 +439,6 @@ function assessBalanceShares(values){
           return `Eventi "a casa": in eccesso ${humanList(maxGroup)} • in difetto ${humanList(minGroup)}`;
         })()
       ];
-
       document.getElementById("notesBody").innerHTML = notes.map(n => {
         const [title, ...rest] = n.split(": ");
         return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
@@ -471,8 +447,7 @@ function assessBalanceShares(values){
     })().catch(err=>{
       console.error(err);
       alert("Errore: " + err.message +
-        "\n- Il documento resta pubblicato come pagina web (OK)." +
-        "\n- Lettura via export CSV della stessa scheda.");
+        "\n- Il documento resta pubblicato come pagina web (OK).\n- Lettura via export CSV della stessa scheda.");
     });
   </script>
 </body>
