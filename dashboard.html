@@ -9,6 +9,7 @@
     :root{
       --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
       --head:#0b1220; --accent:#16a34a; --danger:#dc2626; --balanced-bg:#ebfbee; --balanced-br:#86efac;
+      --focus-br:#374151; --focus-bg:#f7f7fa;
     }
     *{ box-sizing:border-box }
     body{ margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--ink) }
@@ -26,20 +27,25 @@
     .card-body{ padding:12px 16px }
 
     .table-wrap{ border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff }
-    table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px }
-    thead th{ position:sticky; top:0; background:#fff; z-index:1; color:#0b1220; border-bottom:1px solid var(--border); font-weight:700; padding:12px 10px }
-    tbody td{ padding:12px 10px; border-bottom:1px solid var(--border) }
-    tbody tr:nth-child(even){ background:#fafafa }
-    tbody tr:hover{ background:#f1f5f9 }
-    th:first-child,td:first-child{ text-align:left; width:180px }
+    table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px; min-width: 980px; }
+    thead th{ position:sticky; top:0; background:#fff; z-index:2; color:#0b1220; border-bottom:1px solid var(--border); font-weight:700; padding:12px 10px; white-space:nowrap }
+    tbody td{ padding:12px 10px; border-bottom:1px solid var(--border); background:#fff }
+    tbody tr:nth-child(even) td{ background:#fafafa }
+    tbody tr:hover td{ background:#f1f5f9 }
+    th:first-child, td:first-child{ text-align:left; width:180px }
+    /* prima colonna sticky */
+    th:first-child{ position: sticky; left: 0; z-index: 3; }
+    td:first-child{ position: sticky; left: 0; z-index: 1; background:#fff; }
+
     .num{ text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap }
     .weeks{ text-align:left; white-space:normal; max-width:320px }
 
-    /* cerchietto rosso attorno al numero, ben centrato */
+    /* cerchietto rosso attorno al numero, centrato */
     .ring{
       display:inline-flex; align-items:center; justify-content:center;
       min-width: 2.4ch; padding:2px 6px; line-height:1.2;
       border:2px solid transparent; border-radius:9999px;
+      background:transparent;
     }
     .ring.red{ border-color:var(--danger) }
 
@@ -48,13 +54,18 @@
     th.balanced-col{ border-bottom-color:var(--balanced-br) }
     .balanced-outline{ box-shadow: inset 2px 0 0 var(--balanced-br), inset -2px 0 0 var(--balanced-br) }
 
+    /* riquadro grigio intorno alle 3 colonne Eventi a casa (n/%/Settimane) */
+    .focus { background: var(--focus-bg); }
+    .focus-start { border-left: 2px solid var(--focus-br); }
+    .focus-end { border-right: 2px solid var(--focus-br); }
+
     .legend{ font-size:14px; color:#111 }
     .legend h3{ margin:0 0 10px; font-size:15px; color:var(--head) }
     .legend ul{ margin:6px 0 12px 18px; padding:0 }
     .legend li{ margin:6px 0 }
     .legend .muted{ color:var(--muted); font-size:12px }
 
-    .notes table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px }
+    .notes table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px; min-width: 680px; }
     .notes th,.notes td{ padding:10px 8px; border-bottom:1px solid var(--border) }
     .notes thead th{ background:#fff; position:sticky; top:0; z-index:1 }
   </style>
@@ -88,9 +99,9 @@
                 <th id="th-ri">Riposo</th>
                 <th id="th-104">104</th>
                 <th id="th-ma">Malattia</th>
-                <th id="th-evn">Eventi “a casa” (n)</th>
-                <th>Eventi “a casa” (%)</th>
-                <th>Settimane (ISO) eventi</th>
+                <th id="th-evn" class="focus focus-start">Eventi “a casa” (n)</th>
+                <th id="th-evp" class="focus">Eventi “a casa” (%)</th>
+                <th id="th-evw" class="focus focus-end">Settimane (ISO) eventi</th>
               </tr>
             </thead>
             <tbody id="riepilogo"></tbody>
@@ -121,8 +132,8 @@
 
         <h3>Bollini e bilanciamento</h3>
         <ul>
-          <li><span class="ring red">52</span> = <b>outlier</b> (valore più distante dalla quota equa). Al massimo <b>uno</b> per colonna.</li>
-          <li><b>Colonna verde</b> = differenze irrilevanti: <code>max(quota) − min(quota) ≤ 5pp</code>, dove quota = <code>val/somma</code>.</li>
+          <li><span class="ring red">52</span> = <b>outlier</b> (valore più distante dalla quota equa). Un solo bollino per colonna.</li>
+          <li><b>Colonna verde</b> = differenze irrilevanti: <code>max(quota) − min(quota) ≤ 5pp</code>, quota = <code>val/somma</code>.</li>
         </ul>
       </div>
     </section>
@@ -137,7 +148,7 @@
           </table>
         </div>
         <div class="sub" style="margin-top:8px;">
-          Le note sono derivate dai totali attuali per bilanciare la ripartizione nella prossima settimana.
+          Le note confrontano tutti i dipendenti con l’<b>outlier</b> della colonna (alto o basso) e suggeriscono “aumentare”/“diminuire”.
         </div>
       </div>
     </section>
@@ -332,11 +343,10 @@
         };
       });
 
-      // Colonne da valutare con bollini/verde (NO bollini su riposo/104/malattia)
-      const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie"]);
+      // Colonne valutate con bollini (inclusi Eventi a casa n), NO bollini su riposo/104/malattia
+      const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
       const headerIdByKey = {
-        aperture:"th-ap", chiusure:"th-ch",
-        apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
+        aperture:"th-ap", chiusure:"th-ch", apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
         ferie:"th-fe", riposo:"th-ri", "104":"th-104", malattia:"th-ma", _eventsN:"th-evn"
       };
 
@@ -358,14 +368,14 @@
           const idxMin = shares.indexOf(minShare);
           outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
         }
-        return { balanced, outIndex, shares, spread };
+        return { balanced, outIndex, shares, spread, maxShare, minShare };
       }
 
       // Prepara valori per metrica
       const perMetricValues = {};
       Object.keys(headerIdByKey).forEach(k => perMetricValues[k] = rowsRender.map(r => r[k]));
 
-      // Stato colonne e header verde (solo per DOT_KEYS)
+      // Stato colonne e header verde
       const columnStatus = {};
       for (const key of DOT_KEYS){
         const vals = perMetricValues[key];
@@ -377,15 +387,17 @@
         }
       }
 
-      // Render tabella (bollino solo per DOT_KEYS)
+      // Render tabella
       const tbody = document.getElementById("riepilogo");
       tbody.innerHTML = rowsRender.map((r, rowIdx) => {
-        function cell(key, isNum=true){
+        function cell(key, extraCls="", isNum=true){
           const isDotCol = DOT_KEYS.has(key);
           const st = isDotCol ? columnStatus[key] : null;
           const val = r[key];
           const ringCls = (!st || st.balanced || st.outIndex !== rowIdx) ? 'ring' : 'ring red';
           const tdCls = ['num'];
+          if (extraCls) tdCls.push(extraCls);
+          // colonna bilanciata → sfondo verde anche per celle
           if (isDotCol && st && st.balanced) tdCls.push('balanced-col','balanced-outline');
           const content = isNum ? `<span class="${ringCls}">${val}</span>` : val;
           return `<td class="${tdCls.join(' ')}">${content}</td>`;
@@ -400,44 +412,42 @@
           ${cell("riposo")}
           ${cell("104")}
           ${cell("malattia")}
-          ${cell("_eventsN")}
-          <td class="num"><span class="ring">${r._eventsPct.toFixed(1)}%</span></td>
-          <td class="weeks">${r._weeksList}</td>
+          ${cell("_eventsN","focus focus-start")}
+          <td class="num focus"><span class="ring">${r._eventsPct.toFixed(1)}%</span></td>
+          <td class="weeks focus focus-end">${r._weeksList}</td>
         </tr>`;
       }).join("");
 
-      // NOTE per prossima settimana — con pari-minimi/massimi
+      // NOTE per prossima settimana — usare aumentare/diminuire rispetto all'outlier, con pari min/max
       function humanList(names){
         if (names.length === 1) return names[0];
         if (names.length === 2) return `${names[0]} e ${names[1]}`;
         return `${names.slice(0,-1).join(", ")} e ${names.slice(-1)}`;
       }
-      function adviceMulti(values, labels, what, weekend=false){
+      function adviceObjective(values, labels, what){
         const st = assessBalanceShares(values);
         if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        const max = Math.max(...values), min = Math.min(...values);
-        const maxGroup = labels.filter((_,i)=>values[i]===max);
-        const minGroup = labels.filter((_,i)=>values[i]===min);
-        return weekend
-          ? `${what}: avvantaggiare ${humanList(minGroup)} • svantaggiare ${humanList(maxGroup)}`
-          : `${what}: più a ${humanList(minGroup)} • meno a ${humanList(maxGroup)}`;
+        const shares = values.map(v => v / values.reduce((a,b)=>a+b,0));
+        const mean = 1 / values.length;
+        const max = Math.max(...shares), min = Math.min(...shares);
+        const isHighOut = (st.outIndex !== null) ? (shares[st.outIndex] === max) : false;
+        const outShare = isHighOut ? max : min;
+        const outGroup = labels.filter((_,i)=>shares[i]===outShare);
+        const counterShare = isHighOut ? min : max;
+        const counterGroup = labels.filter((_,i)=>shares[i]===counterShare);
+
+        return isHighOut
+          ? `${what}: diminuire ${humanList(outGroup)} • aumentare ${humanList(counterGroup)} (riferimento outlier: ${humanList(outGroup)})`
+          : `${what}: aumentare ${humanList(outGroup)} • diminuire ${humanList(counterGroup)} (riferimento outlier: ${humanList(outGroup)})`;
       }
 
       const labels = dipendenti;
       const notes = [
-        adviceMulti(perMetricValues["aperture"], labels, "Aperture"),
-        adviceMulti(perMetricValues["chiusure"], labels, "Chiusure"),
-        adviceMulti(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi", true),
-        adviceMulti(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi", true),
-        (function(){
-          const vals = perMetricValues["_eventsN"];
-          const st = assessBalanceShares(vals);
-          if (st.balanced) return `Eventi "a casa": distribuzione bilanciata.`;
-          const max = Math.max(...vals), min = Math.min(...vals);
-          const maxGroup = labels.filter((_,i)=>vals[i]===max);
-          const minGroup = labels.filter((_,i)=>vals[i]===min);
-          return `Eventi "a casa": in eccesso ${humanList(maxGroup)} • in difetto ${humanList(minGroup)}`;
-        })()
+        adviceObjective(perMetricValues["aperture"], labels, "Aperture"),
+        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure"),
+        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi"),
+        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
+        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
       ];
       document.getElementById("notesBody").innerHTML = notes.map(n => {
         const [title, ...rest] = n.split(": ");
