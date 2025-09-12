@@ -6,59 +6,154 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <style>
-    :root { --card:#fff; --bg:#f6f6f6; --muted:#6b7280; --border:#e5e7eb; }
+    :root {
+      --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
+      --head:#0b1220; --accent:#1f6feb;
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin:0; background:var(--bg); color:#111; }
-    header { padding:18px 22px; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.06); position:sticky; top:0; z-index:10; }
-    h1 { margin:0; font-size:18px; }
-    .muted { color:var(--muted); font-size:12px; }
-    .wrap { padding:18px 22px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; box-shadow:0 2px 10px rgba(0,0,0,.04); }
-    .card h2 { margin:0 0 10px; font-size:15px; color:#222; }
-    .table-wrap { max-height:75vh; overflow:auto; border:1px solid var(--border); border-radius:10px; }
-    table { width:100%; border-collapse:collapse; font-size:14px; }
-    thead th { position:sticky; top:0; background:#fff; z-index:1; border-bottom:1px solid var(--border); }
-    th, td { padding:10px 8px; text-align:center; border-bottom:1px solid var(--border); }
+    html, body { height:100%; }
+    body {
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg); color:var(--ink); line-height:1.4;
+    }
+    header {
+      position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border);
+    }
+    .wrap { max-width:1200px; margin:0 auto; padding:18px 20px; }
+    h1 { margin:0; font-size:22px; color:var(--head); }
+    .sub { color:var(--muted); font-size:13px; margin-top:6px; }
+
+    .badges { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    .badge {
+      display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--border);
+      background:var(--card); border-radius:999px; font-size:12px; color:#0f172a;
+    }
+
+    main.wrap { display:grid; grid-template-columns: 1fr 360px; gap:18px; }
+    @media (max-width: 980px){ main.wrap { grid-template-columns: 1fr; } }
+
+    .card {
+      background:var(--card); border:1px solid var(--border); border-radius:16px;
+      box-shadow: 0 1px 6px rgba(0,0,0,.04);
+    }
+    .card-header { padding:14px 16px; border-bottom:1px solid var(--border); }
+    .card-title { margin:0; font-size:16px; color:var(--head); }
+    .card-body { padding:12px 16px; }
+
+    .legend { font-size:14px; color:#111; }
+    .legend h3 { margin:0 0 10px; font-size:15px; color:var(--head); }
+    .legend ul { margin:6px 0 12px 18px; padding:0; }
+    .legend li { margin:6px 0; }
+    .legend .muted { color:var(--muted); font-size:12px; }
+
+    .table-wrap {
+      border:1px solid var(--border); border-radius:12px; overflow:auto; max-height:70vh; background:#fff;
+    }
+    table { width:100%; border-collapse:separate; border-spacing:0; font-size:15px; }
+    thead th {
+      position:sticky; top:0; background:#fff; z-index:1; color:#0b1220;
+      border-bottom:1px solid var(--border); font-weight:700; padding:12px 10px;
+    }
+    tbody td { padding:12px 10px; border-bottom:1px solid var(--border); }
     tbody tr:nth-child(even){ background:#fafafa; }
-    tbody tr:hover { background:#f3f4f6; }
-    td:first-child, th:first-child { text-align:left; }
+    tbody tr:hover { background:#f1f5f9; }
+    th:first-child, td:first-child { text-align:left; width:180px; }
+    .num { text-align:right; font-variant-numeric: tabular-nums; }
+    .weeks { text-align:left; white-space:normal; max-width:280px; }
+
+    .footnote { margin-top:10px; color:var(--muted); font-size:12px; }
+    .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+    .btn {
+      border:1px solid var(--border); background:#fff; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:13px;
+    }
+    .btn:hover { border-color:#cfd3e1; }
   </style>
 </head>
 <body>
   <header>
-    <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati dal tuo link pubblicato (CSV dell’URL pubhtml, nessuna modifica alla condivisione).</div>
-  </header>
-
-  <div class="wrap">
-    <div class="card">
-      <h2>Riepilogo per dipendente</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Dipendente</th>
-              <th>Aperture</th>
-              <th>Chiusure</th>
-              <th>Aperture Weekend/Festivi</th>
-              <th>Chiusure Weekend/Festivi</th>
-              <th>Ferie</th>
-              <th>Riposo</th>
-              <th>104</th>
-              <th>Malattia</th>
-              <th>Eventi “a casa” (n)</th>
-              <th>Eventi “a casa” (%)</th>
-              <th>Settimane (ISO) eventi</th>
-            </tr>
-          </thead>
-          <tbody id="riepilogo"></tbody>
-        </table>
+    <div class="wrap">
+      <h1>📊 Statistiche Orari Profumeria</h1>
+      <div class="sub">Dati dal foglio Google pubblicato (lettura automatica, nessuna modifica alla condivisione).</div>
+      <div class="badges">
+        <div class="badge" id="isoBadge">Settimana ISO: …</div>
+        <div class="badge" id="updBadge">Aggiornato: …</div>
       </div>
     </div>
-  </div>
+  </header>
+
+  <main class="wrap" aria-live="polite">
+    <!-- TABELLONE -->
+    <section class="card" aria-label="Riepilogo per dipendente">
+      <div class="card-header"><h2 class="card-title">Riepilogo per dipendente</h2></div>
+      <div class="card-body">
+        <div class="controls">
+          <button class="btn" id="fontMinus" title="Riduci dimensione tabella">A−</button>
+          <button class="btn" id="fontPlus" title="Aumenta dimensione tabella">A+</button>
+        </div>
+        <div class="table-wrap">
+          <table aria-describedby="legend">
+            <thead>
+              <tr>
+                <th>Dipendente</th>
+                <th class="num">Aperture</th>
+                <th class="num">Chiusure</th>
+                <th class="num">Aperture WE/Festivi</th>
+                <th class="num">Chiusure WE/Festivi</th>
+                <th class="num">Ferie</th>
+                <th class="num">Riposo</th>
+                <th class="num">104</th>
+                <th class="num">Malattia</th>
+                <th class="num">Eventi “a casa” (n)</th>
+                <th class="num">Eventi “a casa” (%)</th>
+                <th class="weeks">Settimane (ISO) eventi</th>
+              </tr>
+            </thead>
+            <tbody id="riepilogo"></tbody>
+          </table>
+        </div>
+        <div class="footnote">
+          Tip: scorri orizzontalmente se vedi la tabella tagliata sullo schermo piccolo.
+        </div>
+      </div>
+    </section>
+
+    <!-- LEGENDA -->
+    <aside class="card" id="legend">
+      <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
+      <div class="card-body legend">
+        <h3>Eventi “a casa”</h3>
+        <ul>
+          <li><b>Cosa conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
+          <li><b>Quando scatta un evento (per settimana ISO):</b>
+            <ul>
+              <li><b>Sabato + Domenica</b> entrambi “a casa”.</li>
+              <li><b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
+              <li><b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
+            </ul>
+          </li>
+          <li>Elenco “Settimane (ISO) eventi”: sono i numeri di settimana in cui la condizione è stata soddisfatta
+              (riferite all’<b>anno ISO corrente</b> per la %).</li>
+        </ul>
+
+        <h3>Percentuale “eventi a casa”</h3>
+        <ul>
+          <li><b>Formula:</b> (Eventi “a casa” <u>fino alla settimana ISO odierna</u>) / (Numero della settimana ISO odierna) × 100.</li>
+          <li><b>Settimana ISO:</b> lun–dom; la settimana 01 è quella che contiene il 4 gennaio.</li>
+        </ul>
+
+        <h3>Weekend & Festivi</h3>
+        <ul>
+          <li><b>Weekend:</b> sabato e domenica.</li>
+          <li><b>Festivi considerati:</b> 1/1, 6/1, Pasqua (dom), Lunedì dell’Angelo, 25/4, 1/5, 2/6, 15/8, 1/11, 8/12, 25/12, 26/12.</li>
+        </ul>
+
+        <p class="muted">Nota: se i dati contengono più anni, la % usa <b>solo</b> le settimane dell’anno ISO corrente; possiamo aggiungere filtri per anno/mese su richiesta.</p>
+      </div>
+    </aside>
+  </main>
 
   <script>
-    // Tuo link pubhtml con gid fisso
+    // ——— CONFIG: tuo link pubhtml (immutato) ———
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
     function getPubInfo(pubhtml){
@@ -77,7 +172,7 @@
       return parsed.data;
     }
 
-    // Util date
+    // Date utils
     function parseItaDate(dstr){
       if (!dstr) return null;
       if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
@@ -102,45 +197,53 @@
       return d.getFullYear();
     }
 
-    // Festività italiane (fisse + Pasqua/Pasquetta)
+    // Pasqua + festivi Italia
     function easterSunday(year){
-      const a = year % 19, b = Math.floor(year/100), c = year % 100;
-      const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
-      const g = Math.floor((b - f + 1)/3), h = (19*a + b - d - g + 15) % 30;
-      const i = Math.floor(c/4), k = c % 4, l = (32 + 2*e + 2*i - h - k) % 7;
-      const m = Math.floor((a + 11*h + 22*l)/451);
-      const month = Math.floor((h + l - 7*m + 114)/31), day = ((h + l - 7*m + 114) % 31) + 1;
+      const a=year%19, b=Math.floor(year/100), c=year%100, d=Math.floor(b/4), e=b%4;
+      const f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3);
+      const h=(19*a+b-d-g+15)%30, i=Math.floor(c/4), k=c%4;
+      const l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451);
+      const month=Math.floor((h+l-7*m+114)/31), day=((h+l-7*m+114)%31)+1;
       return new Date(year, month-1, day);
     }
     function italianHolidays(year){
-      const set = new Set();
-      const add = (m,d)=> set.add(toYMD(new Date(year, m-1, d)));
-      add(1,1); add(1,6); add(4,25); add(5,1); add(6,2);
-      add(8,15); add(11,1); add(12,8); add(12,25); add(12,26);
-      const easter = easterSunday(year), pasquetta = addDays(easter,1);
+      const set=new Set(); const add=(m,d)=>set.add(toYMD(new Date(year,m-1,d)));
+      add(1,1); add(1,6); add(4,25); add(5,1); add(6,2); add(8,15); add(11,1); add(12,8); add(12,25); add(12,26);
+      const easter=easterSunday(year), pasquetta=addDays(easter,1);
       set.add(toYMD(easter)); set.add(toYMD(pasquetta));
       return set;
     }
     function isHoliday(date, holidaysMap){
-      const y = date.getFullYear();
+      const y=date.getFullYear();
       if(!holidaysMap.has(y)) holidaysMap.set(y, italianHolidays(y));
       return holidaysMap.get(y).has(toYMD(date));
     }
 
-    (async function main(){
-      const { pubId, gid } = getPubInfo(PUBHTML);
+    // UI helpers: font size controls
+    (function fontControls(){
+      const tbl = document.querySelector("table");
+      const plus = document.getElementById("fontPlus");
+      const minus = document.getElementById("fontMinus");
+      let size = 15;
+      function apply(){ tbl.style.fontSize = size + "px"; }
+      plus.onclick = ()=>{ size = Math.min(18, size+1); apply(); };
+      minus.onclick = ()=>{ size = Math.max(12, size-1); apply(); };
+      apply();
+    })();
 
-      // Export CSV del documento pubblicato (fallback gviz se serve)
+    (async function main(){
+      // Badges
+      const now = new Date();
+      document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
+      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+
+      const { pubId, gid } = getPubInfo(PUBHTML);
+      // CSV export (fallback gviz CSV)
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
-      try {
-        rows = await fetchCSV(csvUrl);
-      } catch (e1) {
-        csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`;
-        rows = await fetchCSV(csvUrl);
-      }
+      try { rows = await fetchCSV(csvUrl); }
+      catch(e1){ csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`; rows = await fetchCSV(csvUrl); }
 
-      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien (valori testuali)
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
       const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
       if (!colData) throw new Error("Colonna 'Data' non trovata.");
@@ -148,19 +251,19 @@
       const dipendenti = dipCols.slice();
 
       // Indice per data
-      const byDate = new Map(); // YYYY-MM-DD -> { colName: valueLower }
+      const byDate = new Map(); // YYYY-MM-DD -> { col: valueLower }
       const holidaysMap = new Map();
 
-      // Statistiche
+      // Stat
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         aperture:0, chiusure:0,
         apertureWEFest:0, chiusureWEFest:0,
         ferie:0, riposo:0, "104":0, malattia:0,
-        eventsWeeksAll: new Set() // chiave "YYYY-W##" delle settimane evento
+        eventsWeeksAll: new Set()
       });
 
-      // Conteggi base + indicizzazione per data
+      // Conteggi base + indice
       for (const row of rows){
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
@@ -194,70 +297,67 @@
         }
       }
 
-      // Helper “a casa” (include MALATTIA)
+      // Helper “a casa”
       const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
-
-      // Analisi eventi per settimane ISO (considero la DOMENICA come ancoraggio della settimana)
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
-      function keyYearWeek(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
+      function weekKey(date){
+        return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`;
+      }
+
+      // Eventi per settimana (ancorati alla domenica)
       for (const ymd of allDates){
         const d = new Date(ymd);
-        if (d.getDay() !== 0) continue; // processa solo le domeniche
+        if (d.getDay() !== 0) continue; // solo domeniche
         const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
         const friHoliday = isHoliday(fri, holidaysMap);
         const monHoliday = isHoliday(mon, holidaysMap);
-        const weekKey = keyYearWeek(sun);
+        const wKey = weekKey(sun);
 
         for (const col of dipCols){
           const satHome = isHome(get(toYMD(sat), col));
           const sunHome = isHome(get(toYMD(sun), col));
-          const cond1 = satHome && sunHome;            // Sab + Dom a casa
-          const cond2 = sunHome && monHoliday;         // Dom a casa + lun festivo
-          const cond3 = friHoliday && satHome && sunHome; // Ven festivo + Sab + Dom a casa
+          const cond1 = satHome && sunHome;
+          const cond2 = sunHome && monHoliday;
+          const cond3 = friHoliday && satHome && sunHome;
           if (cond1 || cond2 || cond3){
-            stats[col].eventsWeeksAll.add(weekKey);
+            stats[col].eventsWeeksAll.add(wKey);
           }
         }
       }
 
-      // Calcolo %: (eventi fino alla settimana ISO odierna) / (settimana ISO odierna)
+      // Render tabella
       const today = new Date();
-      const currentIsoWeek = isoWeek(today);
-      const currentIsoYear = isoWeekYear(today);
+      const curW = isoWeek(today), curY = isoWeekYear(today);
 
-      const body = document.getElementById("riepilogo");
-      body.innerHTML = dipendenti.map(d => {
+      const tbody = document.getElementById("riepilogo");
+      tbody.innerHTML = dipendenti.map(d => {
         const s = stats[d];
 
-        // settimane evento dell'anno ISO corrente (solo fino alla settimana attuale)
-        const weeksThisYearUpToNow = Array
-          .from(s.eventsWeeksAll)
-          .map(k => {
-            const [y, w] = k.split("-W").map(Number);
-            return { y, w };
-          })
-          .filter(o => o.y === currentIsoYear && o.w <= currentIsoWeek)
+        // settimane evento per l'anno corrente e fino alla settimana odierna
+        const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
+          .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
+          .filter(o => o.y === curY && o.w <= curW)
           .sort((a,b)=>a.w-b.w);
 
         const nEvents = weeksThisYearUpToNow.length;
-        const perc = currentIsoWeek > 0 ? (nEvents / currentIsoWeek) * 100 : 0;
+        const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
         const weeksList = weeksThisYearUpToNow.map(o => o.w).join(", ");
 
         return `<tr>
           <td>${d}</td>
-          <td>${s.aperture}</td>
-          <td>${s.chiusure}</td>
-          <td>${s.apertureWEFest}</td>
-          <td>${s.chiusureWEFest}</td>
-          <td>${s.ferie}</td>
-          <td>${s.riposo}</td>
-          <td>${s["104"]}</td>
-          <td>${s.malattia}</td>
-          <td>${nEvents}</td>
-          <td>${perc.toFixed(1)}%</td>
-          <td>${weeksList}</td>
+          <td class="num">${s.aperture}</td>
+          <td class="num">${s.chiusure}</td>
+          <td class="num">${s.apertureWEFest}</td>
+          <td class="num">${s.chiusureWEFest}</td>
+          <td class="num">${s.ferie}</td>
+          <td class="num">${s.riposo}</td>
+          <td class="num">${s["104"]}</td>
+          <td class="num">${s.malattia}</td>
+          <td class="num">${nEvents}</td>
+          <td class="num">${perc.toFixed(1)}%</td>
+          <td class="weeks">${weeksList || "—"}</td>
         </tr>`;
       }).join("");
 
@@ -265,7 +365,7 @@
       console.error(err);
       alert("Errore: " + err.message +
         "\n- Il documento resta pubblicato come pagina web (OK)." +
-        "\n- Sto leggendo l’export CSV della stessa scheda per calcolare le statistiche.");
+        "\n- Lettura via export CSV della stessa scheda.");
     });
   </script>
 </body>
