@@ -103,8 +103,8 @@
                 <th id="th-ri">Riposo</th>
                 <th id="th-104">104</th>
                 <th id="th-ma">Malattia</th>
-                <th id="th-evn" class="focus focus-start">Eventi “a casa” (n)</th>
-                <th id="th-evp" class="focus">Eventi “a casa” (%)</th>
+                <th id="th-evn" class="focus focus-start">N° WE Lunghi</th>
+                <th id="th-evp" class="focus">%  WE Lunghi</th>
                 <th id="th-evw" class="focus focus-end">Settimane (ISO) eventi</th>
               </tr>
             </thead>
@@ -118,9 +118,9 @@
     <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
       <div class="card-body legend">
-        <h3>Eventi “a casa”</h3>
+        <h3>Weekend Lunghi</h3>
         <ul>
-          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
+          <li><b>Conta come “Weekend Lungo”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
@@ -293,7 +293,7 @@
       // Mostra range date sotto ai badge
       const rangeEl = document.getElementById('rangeInfo');
       if (minDate && maxDate){
-        rangeEl.textContent = `Dati elaborati dal ${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al ${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} (secondo il foglio Google)`;
+        rangeEl.textContent = `Dati elaborati dal ${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al ${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})};
       } else {
         rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
