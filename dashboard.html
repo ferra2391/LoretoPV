@@ -45,13 +45,16 @@
     tbody tr:nth-child(even){ background:#fafafa; }
     tbody tr:hover { background:#f1f5f9; }
     th:first-child, td:first-child { text-align:left; width:180px; }
-    .num { text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+    /* numeri centrati come richiesto */
+    .num { text-align:center; font-variant-numeric: tabular-nums; white-space:nowrap; }
     .weeks { text-align:left; white-space:normal; max-width:320px; }
-    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:6px; vertical-align:middle; }
-    .dot.red { background:var(--danger); box-shadow:0 0 0 2px #fee2e2 inset; }
 
-    /* colonna "bilanciata": bordo e sfondo verdi */
-    .balanced-col { background:var(--balanced-bg); }
+    /* cerchietto rosso attorno al numero (bollino) */
+    .ring { display:inline-block; padding:2px 8px; border:2px solid transparent; border-radius:9999px; line-height:1; }
+    .ring.red { border-color: var(--danger); }
+
+    /* colonna bilanciata → verde tenue */
+    .balanced-col { background:var(--balanced-bg) !important; }
     th.balanced-col { border-bottom-color:var(--balanced-br); }
     .balanced-outline { box-shadow: inset 2px 0 0 var(--balanced-br), inset -2px 0 0 var(--balanced-br); }
 
@@ -115,7 +118,7 @@
         <h3>Eventi “a casa”</h3>
         <ul>
           <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
-          <li><b>La settimana ISO</b> va da lunedì a domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
+          <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
               <li><b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
@@ -130,8 +133,8 @@
 
         <h3>Bollini e bilanciamento</h3>
         <ul>
-          <li><span class="dot red"></span> = <b>outlier</b> (il valore più sbilanciato rispetto agli altri, alto o basso). Al massimo <b>uno</b> per colonna.</li>
-          <li><b>Colonna in verde</b> = differenze <b>irrilevanti</b> tra dipendenti (distribuzione bilanciata).</li>
+          <li><span class="ring red">●</span> = <b>outlier</b> (valore più sbilanciato, alto o basso). Al massimo <b>uno</b> per colonna.</li>
+          <li><b>Colonna verde</b> = differenze irrilevanti: ogni quota <code>val/somma</code> è entro ±15 punti percentuali dalla ripartizione equa.</li>
         </ul>
       </div>
     </section>
@@ -292,7 +295,7 @@
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
 
-      function weekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
+      function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
       // Eventi “a casa” — combinazioni richieste (ancoraggio alla domenica)
       for (const ymd of allDates){
@@ -301,7 +304,7 @@
         const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
         const friHoliday = isHoliday(fri, holidaysMap);
         const monHoliday = isHoliday(mon, holidaysMap);
-        const wKey = weekKey(sun);
+        const wKey = isoWeekKey(sun);
 
         for (const col of dipCols){
           const friHome = isHome(get(toYMD(fri), col));
@@ -309,9 +312,9 @@
           const sunHome = isHome(get(toYMD(sun), col));
           const monHome = isHome(get(toYMD(mon), col));
 
-          const condA = friHome && satHome && sunHome;                         // Ven+Sab+Dom tutti a casa
-          const condB = satHome && sunHome && monHome;                         // Sab+Dom+Lun tutti a casa
-          const condC = sunHome && monHome;                                    // Dom+Lun entrambi a casa
+          const condA = friHome && satHome && sunHome;                         // Ven+Sab+Dom a casa
+          const condB = satHome && sunHome && monHome;                         // Sab+Dom+Lun a casa
+          const condC = sunHome && monHome;                                    // Dom+Lun a casa
           const condD = sunHome && monHoliday;                                 // Dom a casa + Lun festivo
           const condE = friHoliday && satHome && sunHome;                      // Ven festivo + Sab a casa + Dom a casa
           const condF = satHome && sunHome && monHoliday;                      // Sab+Dom a casa + Lun festivo
@@ -326,19 +329,28 @@
       const today = new Date();
       const curW = isoWeek(today), curY = isoWeekYear(today);
 
-      // Funzioni per bollini/verde (bilanciamento)
-      function assessBalance(values){
-        const min = Math.min(...values), max = Math.max(...values);
-        const mean = values.reduce((a,b)=>a+b,0)/values.length || 0;
-        const range = max - min;
-        const tol = Math.max(2, 0.15 * mean); // differenza irrilevante: <= 2 unità o <= 15% della media
-        if (range <= tol) return { balanced:true, outIndex:null };
-        const idxMax = values.indexOf(max), idxMin = values.indexOf(min);
-        const devMax = Math.abs(max - mean), devMin = Math.abs(min - mean);
-        return { balanced:false, outIndex: devMax >= devMin ? idxMax : idxMin };
-      }
+      // Righe da renderizzare
+      const rowsRender = dipendenti.map(d => {
+        const s = stats[d];
+        const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
+          .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
+          .filter(o => o.y === curY && o.w <= curW)
+          .sort((a,b)=>a.w-b.w);
 
-      // Prepara dataset per colonne “valutate”
+        const nEvents = weeksThisYearUpToNow.length;
+        const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
+        return {
+          dip:d,
+          aperture:s.aperture,
+          chiusure:s.chiusure,
+          apertureWEFest:s.apertureWEFest,
+          chiusureWEFest:s.chiusureWEFest,
+          ferie:s.ferie, riposo:s.riposo, "104":s["104"], malattia:s.malattia,
+          _eventsN:nEvents, _eventsPct:perc, _weeksList: weeksThisYearUpToNow.map(o=>o.w).join(", ") || "—"
+        };
+      });
+
+      // Colonne da valutare (per bollini & bilanciamento)
       const metrics = [
         { key:"aperture", th:"th-ap", label:"Aperture" },
         { key:"chiusure", th:"th-ch", label:"Chiusure" },
@@ -351,61 +363,42 @@
         { key:"_eventsN", th:"th-evn", label:"Eventi a casa (n)" }
       ];
 
-      // Calcola settimane & % per ogni dipendente
-      const rowsRender = [];
-      const perMetricValues = {}; // key -> array values ordinati come dipendenti
+      // Valuta bilanciamento tramite quote (val / somma colonna) vs ripartizione equa (±15pp)
+      function assessBalanceShares(values){
+        const sum = values.reduce((a,b)=>a+b,0);
+        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
+        const shares = values.map(v => v/sum);
+        const equal = 1 / values.length;
+        const deviations = shares.map(s => Math.abs(s - equal));
+        const maxDev = Math.max(...deviations);
+        const balanced = maxDev <= 0.15; // ±15 punti percentuali
+        const outIndex = balanced ? null : deviations.indexOf(maxDev);
+        return { balanced, outIndex, shares };
+      }
 
-      dipendenti.forEach(d => {
-        const s = stats[d];
+      // Calcola valori per metrica
+      const perMetricValues = {};
+      metrics.forEach(m => perMetricValues[m.key] = rowsRender.map(r => r[m.key]));
 
-        const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
-          .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
-          .filter(o => o.y === curY && o.w <= curW)
-          .sort((a,b)=>a.w-b.w);
-
-        const nEvents = weeksThisYearUpToNow.length;
-        const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
-        const weeksList = weeksThisYearUpToNow.map(o => o.w).join(", ");
-
-        rowsRender.push({
-          dip:d,
-          aperture:s.aperture,
-          chiusure:s.chiusure,
-          apertureWEFest:s.apertureWEFest,
-          chiusureWEFest:s.chiusureWEFest,
-          ferie:s.ferie, riposo:s.riposo, "104":s["104"], malattia:s.malattia,
-          _eventsN:nEvents, _eventsPct:perc, _weeksList:weeksList || "—"
-        });
-      });
-
-      // Raccogli valori per metrica
+      // Stato colonne (bilanciate/outlier)
+      const columnStatus = {};
       metrics.forEach(m => {
-        perMetricValues[m.key] = rowsRender.map(r => r[m.key]);
+        const st = assessBalanceShares(perMetricValues[m.key]);
+        columnStatus[m.key] = st;
+        if (st.balanced) document.getElementById(m.th)?.classList.add("balanced-col","balanced-outline");
       });
 
-      // Valuta bilanciamento e outlier per colonna
-      const columnStatus = {}; // key -> {balanced, outIndex}
-      metrics.forEach(m => {
-        columnStatus[m.key] = assessBalance(perMetricValues[m.key]);
-        // se bilanciata → colonna in verde
-        if (columnStatus[m.key].balanced) {
-          document.getElementById(m.th)?.classList.add("balanced-col","balanced-outline");
-        }
-      });
-
-      // Render tabella con bollini
+      // Render tabella: aggiungo il cerchietto rosso attorno al numero solo all'outlier
       const tbody = document.getElementById("riepilogo");
       tbody.innerHTML = rowsRender.map((r, rowIdx) => {
         function cell(key, isNum=true){
           const st = columnStatus[key];
           const val = r[key];
-          const showDot = !st.balanced && st.outIndex === rowIdx; // un solo bollino per colonna
-          const cls = ["num"];
-          if (st.balanced) cls.push("balanced-col","balanced-outline");
-          return `<td class="${isNum ? cls.join(" ") : ""}">
-            ${isNum ? val : r[key]}
-            ${showDot ? '<span class="dot red" title="outlier"></span>' : ''}
-          </td>`;
+          const ring = (!st.balanced && st.outIndex === rowIdx) ? ' ring red' : '';
+          const tdCls = ['num'];
+          if (st.balanced) tdCls.push('balanced-col','balanced-outline');
+          const content = isNum ? `<span class="ring${ring}">${val}</span>` : val;
+          return `<td class="${tdCls.join(' ')}">${content}</td>`;
         }
         return `<tr>
           <td>${r.dip}</td>
@@ -418,53 +411,45 @@
           ${cell("104")}
           ${cell("malattia")}
           ${cell("_eventsN")}
-          <td class="num">${r._eventsPct.toFixed(1)}%</td>
+          <td class="num"><span class="ring">${r._eventsPct.toFixed(1)}%</span></td>
           <td class="weeks">${r._weeksList}</td>
         </tr>`;
       }).join("");
 
-      // Applica stile verde anche alle celle di colonne bilanciate
-      // (aggiunto già in render, ma estendiamo anche alle celle header definite sopra)
-      // NOTE: già fatto per th; td sono marcate per colonna dal render.
-
-      // NOTE per prossima settimana (consigli)
-      function adviceForMetric(values, labels, what, weekend=false){
-        // Se bilanciato → no azioni
-        const st = assessBalance(values);
-        if (st.balanced) {
-          return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        }
-        const mean = values.reduce((a,b)=>a+b,0)/values.length || 0;
+      // NOTE per prossima settimana — elenca TUTTI i pari-minimo / pari-massimo
+      function humanList(names){
+        if (names.length === 1) return names[0];
+        if (names.length === 2) return `${names[0]} e ${names[1]}`;
+        return `${names.slice(0,-1).join(", ")} e ${names.slice(-1)}`;
+      }
+      function adviceMulti(values, labels, what, weekend=false){
+        const st = assessBalanceShares(values);
+        if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
+        const sum = values.reduce((a,b)=>a+b,0);
         const max = Math.max(...values), min = Math.min(...values);
-        const iMax = values.indexOf(max), iMin = values.indexOf(min);
-        const more = labels[iMin];   // chi ne ha meno → avvantaggiare
-        const less = labels[iMax];   // chi ne ha di più → svantaggiare
-        if (weekend) {
-          return `${what}: avvantaggiare ${more} • svantaggiare ${less}`;
+        const maxGroup = labels.filter((_,i)=>values[i]===max);
+        const minGroup = labels.filter((_,i)=>values[i]===min);
+        if (weekend){
+          return `${what}: avvantaggiare ${humanList(minGroup)} • svantaggiare ${humanList(maxGroup)}`;
         } else {
-          return `${what}: più a ${more} • meno a ${less}`;
+          return `${what}: più a ${humanList(minGroup)} • meno a ${humanList(maxGroup)}`;
         }
       }
 
-      // Prepara valori per consigli
       const labels = dipendenti;
-      const valsAp  = metrics.find(m=>m.key==="aperture") ? perMetricValues["aperture"] : [];
-      const valsCh  = metrics.find(m=>m.key==="chiusure") ? perMetricValues["chiusure"] : [];
-      const valsApW = metrics.find(m=>m.key==="apertureWEFest") ? perMetricValues["apertureWEFest"] : [];
-      const valsChW = metrics.find(m=>m.key==="chiusureWEFest") ? perMetricValues["chiusureWEFest"] : [];
-      const valsEvN = metrics.find(m=>m.key==="_eventsN") ? perMetricValues["_eventsN"] : rowsRender.map(r=>r._eventsN);
-
       const notes = [
-        adviceForMetric(valsAp, labels, "Aperture"),
-        adviceForMetric(valsCh, labels, "Chiusure"),
-        adviceForMetric(valsApW, labels, "Aperture nel weekend/festivi", true),
-        adviceForMetric(valsChW, labels, "Chiusure nel weekend/festivi", true),
+        adviceMulti(perMetricValues["aperture"], labels, "Aperture"),
+        adviceMulti(perMetricValues["chiusure"], labels, "Chiusure"),
+        adviceMulti(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi", true),
+        adviceMulti(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi", true),
         (function(){
-          const st = assessBalance(valsEvN);
+          const vals = perMetricValues["_eventsN"];
+          const st = assessBalanceShares(vals);
           if (st.balanced) return `Eventi "a casa": distribuzione bilanciata.`;
-          const max = Math.max(...valsEvN), min = Math.min(...valsEvN);
-          const iMax = valsEvN.indexOf(max), iMin = valsEvN.indexOf(min);
-          return `Eventi "a casa": in eccesso ${labels[iMax]} • in difetto ${labels[iMin]}`;
+          const max = Math.max(...vals), min = Math.min(...vals);
+          const maxGroup = labels.filter((_,i)=>vals[i]===max);
+          const minGroup = labels.filter((_,i)=>vals[i]===min);
+          return `Eventi "a casa": in eccesso ${humanList(maxGroup)} • in difetto ${humanList(minGroup)}`;
         })()
       ];
 
