@@ -363,18 +363,28 @@
         { key:"_eventsN", th:"th-evn", label:"Eventi a casa (n)" }
       ];
 
-      // Valuta bilanciamento tramite quote (val / somma colonna) vs ripartizione equa (±15pp)
-      function assessBalanceShares(values){
-        const sum = values.reduce((a,b)=>a+b,0);
-        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
-        const shares = values.map(v => v/sum);
-        const equal = 1 / values.length;
-        const deviations = shares.map(s => Math.abs(s - equal));
-        const maxDev = Math.max(...deviations);
-        const balanced = maxDev <= 0.15; // ±15 punti percentuali
-        const outIndex = balanced ? null : deviations.indexOf(maxDev);
-        return { balanced, outIndex, shares };
-      }
+// Colonna bilanciata se (maxShare - minShare) ≤ 0.15
+// outlier = l'estremo (alto o basso) più lontano dalla quota media (1/N)
+function assessBalanceShares(values){
+  const sum = values.reduce((a,b)=>a+b,0);
+  if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
+
+  const shares = values.map(v => v / sum);
+  const maxShare = Math.max(...shares);
+  const minShare = Math.min(...shares);
+  const balanced = (maxShare - minShare) <= 0.15; // 15 punti percentuali
+
+  let outIndex = null;
+  if (!balanced){
+    const mean = 1 / shares.length;
+    const idxMax = shares.indexOf(maxShare);
+    const idxMin = shares.indexOf(minShare);
+    // scegli l'estremo più distante dalla media
+    outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
+  }
+  return { balanced, outIndex, shares };
+}
+
 
       // Calcola valori per metrica
       const perMetricValues = {};
