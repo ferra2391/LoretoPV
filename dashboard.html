@@ -27,7 +27,7 @@
 <body>
   <header>
     <h1>📊 Statistiche Orari Profumeria</h1>
-    <div class="muted">Dati letti dal tuo link pubblicato (nessuna modifica alla condivisione).</div>
+    <div class="muted">Dati dal tuo link pubblicato (CSV dell’URL pubhtml, nessuna modifica alla condivisione).</div>
   </header>
 
   <div class="wrap">
@@ -47,6 +47,7 @@
               <th>104</th>
               <th>Malattia</th>
               <th>Eventi “a casa” (n)</th>
+              <th>Eventi “a casa” (%)</th>
               <th>Settimane (ISO) eventi</th>
             </tr>
           </thead>
@@ -57,10 +58,9 @@
   </div>
 
   <script>
-    // TUO link pubhtml con gid fisso (invariato)
+    // Tuo link pubhtml con gid fisso
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-    // Ricava pubId e gid
     function getPubInfo(pubhtml){
       const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
@@ -68,7 +68,6 @@
       return { pubId: idm[1], gid: gidm ? gidm[1] : "0" };
     }
 
-    // Carica CSV dal documento pubblicato (senza cambiare condivisione)
     async function fetchCSV(url){
       const r = await fetch(url);
       if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
@@ -78,7 +77,7 @@
       return parsed.data;
     }
 
-    // Data util
+    // Util date
     function parseItaDate(dstr){
       if (!dstr) return null;
       if (/^\d{4}-\d{2}-\d{2}$/.test(dstr)) return new Date(dstr);
@@ -89,50 +88,37 @@
     function toYMD(d){ return d.toISOString().slice(0,10); }
     function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 
-    // ISO week number
-    function isoWeek(d){
-      const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-      const day = dt.getUTCDay() || 7;
-      dt.setUTCDate(dt.getUTCDate() + 4 - day);
-      const yearStart = new Date(Date.UTC(dt.getUTCFullYear(),0,1));
-      return Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+    // ISO week number + ISO week year
+    function isoWeek(date){
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      const day = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - day);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+    function isoWeekYear(date){
+      const d = new Date(date.getTime());
+      d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      return d.getFullYear();
     }
 
-    // Pasqua (algoritmo gregoriano) + Pasquetta
+    // Festività italiane (fisse + Pasqua/Pasquetta)
     function easterSunday(year){
-      const a = year % 19;
-      const b = Math.floor(year / 100);
-      const c = year % 100;
-      const d = Math.floor(b / 4);
-      const e = b % 4;
-      const f = Math.floor((b + 8) / 25);
-      const g = Math.floor((b - f + 1) / 3);
-      const h = (19*a + b - d - g + 15) % 30;
-      const i = Math.floor(c / 4);
-      const k = c % 4;
-      const l = (32 + 2*e + 2*i - h - k) % 7;
-      const m = Math.floor((a + 11*h + 22*l) / 451);
-      const month = Math.floor((h + l - 7*m + 114) / 31); // 3=Mar, 4=Apr
-      const day = ((h + l - 7*m + 114) % 31) + 1;
+      const a = year % 19, b = Math.floor(year/100), c = year % 100;
+      const d = Math.floor(b/4), e = b % 4, f = Math.floor((b+8)/25);
+      const g = Math.floor((b - f + 1)/3), h = (19*a + b - d - g + 15) % 30;
+      const i = Math.floor(c/4), k = c % 4, l = (32 + 2*e + 2*i - h - k) % 7;
+      const m = Math.floor((a + 11*h + 22*l)/451);
+      const month = Math.floor((h + l - 7*m + 114)/31), day = ((h + l - 7*m + 114) % 31) + 1;
       return new Date(year, month-1, day);
     }
     function italianHolidays(year){
       const set = new Set();
       const add = (m,d)=> set.add(toYMD(new Date(year, m-1, d)));
-      add(1,1);   // Capodanno
-      add(1,6);   // Epifania
-      add(4,25);  // Liberazione
-      add(5,1);   // Lavoro
-      add(6,2);   // Repubblica
-      add(8,15);  // Ferragosto
-      add(11,1);  // Ognissanti
-      add(12,8);  // Immacolata
-      add(12,25); // Natale
-      add(12,26); // S. Stefano
-      const easter = easterSunday(year);
-      const pasquetta = addDays(easter, 1);
-      set.add(toYMD(easter));     // Pasqua (comunque è domenica)
-      set.add(toYMD(pasquetta));  // Lunedì dell'Angelo
+      add(1,1); add(1,6); add(4,25); add(5,1); add(6,2);
+      add(8,15); add(11,1); add(12,8); add(12,25); add(12,26);
+      const easter = easterSunday(year), pasquetta = addDays(easter,1);
+      set.add(toYMD(easter)); set.add(toYMD(pasquetta));
       return set;
     }
     function isHoliday(date, holidaysMap){
@@ -144,38 +130,37 @@
     (async function main(){
       const { pubId, gid } = getPubInfo(PUBHTML);
 
-      // prima via: export CSV del documento pubblicato
+      // Export CSV del documento pubblicato (fallback gviz se serve)
       let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
       try {
         rows = await fetchCSV(csvUrl);
       } catch (e1) {
-        // fallback gviz CSV
         csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`;
         rows = await fetchCSV(csvUrl);
       }
 
-      // colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien
+      // Colonne attese: Settimana | Data | Ilenia | Cinzia | Michela | Vivien (valori testuali)
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
       const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
       if (!colData) throw new Error("Colonna 'Data' non trovata.");
       const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
       const dipendenti = dipCols.slice();
 
-      // Pre-index per data → { per dipendente: stato }
-      const byDate = new Map(); // key YYYY-MM-DD → { colName: rawLower }
-      const holidaysMap = new Map(); // year → Set(YYYY-MM-DD festivi)
+      // Indice per data
+      const byDate = new Map(); // YYYY-MM-DD -> { colName: valueLower }
+      const holidaysMap = new Map();
 
-      // Statistiche per dipendente
+      // Statistiche
       const stats = {};
       dipendenti.forEach(d => stats[d] = {
         aperture:0, chiusure:0,
         apertureWEFest:0, chiusureWEFest:0,
         ferie:0, riposo:0, "104":0, malattia:0,
-        eventsWeeks: new Set() // settimane ISO degli eventi “a casa”
+        eventsWeeksAll: new Set() // chiave "YYYY-W##" delle settimane evento
       });
 
-      // Popola indice per data e conteggi base
+      // Conteggi base + indicizzazione per data
       for (const row of rows){
         const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
@@ -188,7 +173,7 @@
 
         for (const col of dipCols){
           const raw = (row[col] || "").toString().trim().toLowerCase();
-          dayObj[col] = raw; // salva per controlli successivi
+          dayObj[col] = raw;
 
           if (!raw) continue;
           if (raw === "apertura") {
@@ -209,51 +194,57 @@
         }
       }
 
-      // Funzione helper “a casa”
-      const isHome = (val) =>
-  ["ferie","riposo","104","malattia"].includes((val || "").toString().toLowerCase());
+      // Helper “a casa” (include MALATTIA)
+      const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
 
-      // Analisi eventi “a casa” per weekend lungo
-      // Regole:
-      // 1) Sabato+Domenica entrambi "a casa"
-      // 2) Domenica "a casa" + Lunedì successivo festivo
-      // 3) Venerdì festivo + Sabato "a casa" + Domenica "a casa"
+      // Analisi eventi per settimane ISO (considero la DOMENICA come ancoraggio della settimana)
       const allDates = Array.from(byDate.keys()).sort();
-      const byYMD = (ymd)=> byDate.get(ymd) || {};
+      const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
+      function keyYearWeek(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
       for (const ymd of allDates){
-        const dt = new Date(ymd);
-        if (dt.getDay() !== 0) continue; // consideriamo come chiave la DOMENICA del weekend
-        const sun = dt;
-        const sat = addDays(sun, -1);
-        const fri = addDays(sun, -2);
-        const mon = addDays(sun, +1);
-
-        const ymdSun = toYMD(sun), ymdSat = toYMD(sat), ymdFri = toYMD(fri), ymdMon = toYMD(mon);
-        const weekNo = isoWeek(sun);
+        const d = new Date(ymd);
+        if (d.getDay() !== 0) continue; // processa solo le domeniche
+        const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
+        const friHoliday = isHoliday(fri, holidaysMap);
+        const monHoliday = isHoliday(mon, holidaysMap);
+        const weekKey = keyYearWeek(sun);
 
         for (const col of dipCols){
-          const satHome = isHome(byYMD(ymdSat)[col]);
-          const sunHome = isHome(byYMD(ymdSun)[col]);
-          const friHoliday = isHoliday(fri, holidaysMap);
-          const monHoliday = isHoliday(mon, holidaysMap);
-
-          const cond1 = satHome && sunHome;
-          const cond2 = sunHome && monHoliday;
-          const cond3 = friHoliday && satHome && sunHome;
-
+          const satHome = isHome(get(toYMD(sat), col));
+          const sunHome = isHome(get(toYMD(sun), col));
+          const cond1 = satHome && sunHome;            // Sab + Dom a casa
+          const cond2 = sunHome && monHoliday;         // Dom a casa + lun festivo
+          const cond3 = friHoliday && satHome && sunHome; // Ven festivo + Sab + Dom a casa
           if (cond1 || cond2 || cond3){
-            stats[col].eventsWeeks.add(weekNo);
+            stats[col].eventsWeeksAll.add(weekKey);
           }
         }
       }
 
-      // Monta tabella
+      // Calcolo %: (eventi fino alla settimana ISO odierna) / (settimana ISO odierna)
+      const today = new Date();
+      const currentIsoWeek = isoWeek(today);
+      const currentIsoYear = isoWeekYear(today);
+
       const body = document.getElementById("riepilogo");
       body.innerHTML = dipendenti.map(d => {
         const s = stats[d];
-        const weeks = Array.from(s.eventsWeeks).sort((a,b)=>a-b).join(", ");
-        const nEvents = s.eventsWeeks.size;
+
+        // settimane evento dell'anno ISO corrente (solo fino alla settimana attuale)
+        const weeksThisYearUpToNow = Array
+          .from(s.eventsWeeksAll)
+          .map(k => {
+            const [y, w] = k.split("-W").map(Number);
+            return { y, w };
+          })
+          .filter(o => o.y === currentIsoYear && o.w <= currentIsoWeek)
+          .sort((a,b)=>a.w-b.w);
+
+        const nEvents = weeksThisYearUpToNow.length;
+        const perc = currentIsoWeek > 0 ? (nEvents / currentIsoWeek) * 100 : 0;
+        const weeksList = weeksThisYearUpToNow.map(o => o.w).join(", ");
+
         return `<tr>
           <td>${d}</td>
           <td>${s.aperture}</td>
@@ -265,7 +256,8 @@
           <td>${s["104"]}</td>
           <td>${s.malattia}</td>
           <td>${nEvents}</td>
-          <td>${weeks}</td>
+          <td>${perc.toFixed(1)}%</td>
+          <td>${weeksList}</td>
         </tr>`;
       }).join("");
 
