@@ -17,17 +17,22 @@
   h1{margin:0;font-size:22px}
   .badges{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:10px}
   .badge{display:inline-flex;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;font-size:12px}
+
   main.wrap{display:flex;flex-direction:column;gap:18px}
   .card{background:#fff;border:1px solid var(--border);border-radius:16px}
   .card-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   .card-title{margin:0;font-size:16px}
   .pill{display:inline-block;padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#fff;cursor:pointer}
+
   .grid-wrap{border:1px solid var(--border);border-radius:12px;overflow:auto;background:#fff}
   table{width:100%;border-collapse:separate;border-spacing:0;min-width:980px;font-size:15px}
   thead th{position:sticky;top:0;background:#fff;z-index:2;border-bottom:1px solid var(--border);padding:10px 8px;white-space:nowrap}
+  thead th .th-day{display:block;line-height:1.1}
+  thead th .th-sub{display:block;color:var(--muted);font-size:12px;margin-top:2px}
   tbody td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
   th:first-child,td:first-child{position:sticky;left:0;background:#fff;z-index:3}
   th:first-child,td:first-child{text-align:left;width:220px}
+
   .open{background:var(--open)}
   .close{background:var(--close)}
   .rest{background:var(--rest);color:#374151}
@@ -35,7 +40,10 @@
   .delta-ok{color:var(--ok);font-weight:600}
   .delta-bad{color:var(--danger);font-weight:600}
   .alert{background:#fff7e6;border:1px solid #ffe5b4;border-radius:10px;padding:10px 12px;color:#8a6100}
-  .abs-hrs{width:70px}
+
+  .abs-num{width:74px;padding:4px 6px}
+  .abs-num::-webkit-outer-spin-button,
+  .abs-num::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   .subrow-label{color:#6b7280;font-size:12px}
   .emp-name{font-weight:600}
   .divider td{border-top:2px solid #e5e7eb}
@@ -98,13 +106,13 @@ const OPENERS = [{h:6,label:"9–15"},{h:5,label:"9–14"},{h:4,label:"9–13"}]
 const CLOSERS = [{h:7,label:"13–20"},{h:6,label:"14–20"},{h:5,label:"15–20"}];
 let regenTick = 0;
 
-// ==== utils date/holidays ====
-function toYMD(d){ return d.toISOString().slice(0,10); }
+// ==== utils date ====
 function addDays(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
 function parseItaDate(s){ if(!s) return null; if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s); const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if(!m) return new Date(s); return new Date(+m[3],+m[2]-1,+m[1]); }
 function mondayOfNextWeek(base){ const b=new Date(base); const day=b.getDay()||7; const monday=addDays(b,1-day); return addDays(monday,7); }
 function isoWeek(d){ const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const wd=x.getUTCDay()||7; x.setUTCDate(x.getUTCDate()+4-wd); const y0=new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil((((x-y0)/86400000)+1)/7); }
 function isoWeekYear(d){ const x=new Date(d.getTime()); x.setDate(x.getDate()+4-(x.getDay()||7)); return x.getFullYear(); }
+function ddmm(d){ return String(d.getDate()).padStart(2,'0') + "/" + String(d.getMonth()+1).padStart(2,'0'); }
 
 // ==== CSV ====
 function getPubInfo(pubhtml){ const idm=pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/); const gidm=pubhtml.match(/[?&]gid=(\d+)/); return {pubId:idm[1], gid: gidm?gidm[1]:"0"}; }
@@ -129,10 +137,13 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
   for(const r of rows){ const dt=parseItaDate(r[colData]); if(!dt||isNaN(+dt)) continue; if(!maxDate||dt>maxDate) maxDate=dt; }
   const start=mondayOfNextWeek(maxDate||new Date());
   const end=addDays(start,6);
+  const daysLabel=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
+  for(let i=0;i<7;i++){
+    const d=addDays(start,i);
+    document.getElementById("d"+i).innerHTML = `<span class="th-day">${daysLabel[i]}<span class="th-sub">${ddmm(d)}</span></span>`;
+  }
   document.getElementById("badgeWeek").textContent=`Settimana: ${isoWeek(start)}/${isoWeekYear(start)}`;
   document.getElementById("badgeRange").textContent=`Periodo: ${start.toLocaleDateString('it-IT')} → ${end.toLocaleDateString('it-IT')}`;
-  const daysLabel=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
-  for(let i=0;i<7;i++){ const d=addDays(start,i); document.getElementById("d"+i).textContent=`${daysLabel[i]} ${d.toLocaleDateString('it-IT')}`; }
 
   const tbody=document.getElementById("tbody");
 
@@ -143,14 +154,11 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
     }</tr>`;
   }
   function rowAbs(name, type){
-    const show = (type!=="104") || /^cinzia$/i.test(name); // 104 solo Cinzia
+    const show = (type!=="104") || /^cinzia$/i.test(name);
     if(!show) return "";
     return `<tr><td class="subrow-label">${type[0].toUpperCase()+type.slice(1)}</td>${
       Array.from({length:7},()=>`<td>
-        <select class="abs-hrs" data-type="${type}">
-          <option value="0">—</option><option value="4">4h</option>
-          <option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
-        </select>
+        <input class="abs-num" type="number" min="0" max="8" step="1" inputmode="numeric" placeholder="0" data-type="${type}">
       </td>`).join("")
     }</tr>`;
   }
@@ -161,20 +169,43 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
   }
   renderSkeleton();
 
+  // utility per shift cell (con dataset)
+  function writeShiftCell(r, day, side, hours){
+    const label = side==='open'
+      ? (hours===6?"9–15": hours===5?"9–14":"9–13")
+      : (hours===7?"13–20": hours===6?"14–20":"15–20");
+    const cls = side==='open'?'open':'close';
+    const html = `<div class="${cls}" data-type="${side}" data-hours="${hours}" data-label="${label}"><b>${label}</b> (${hours}h)</div>`;
+    document.getElementById(`cell-${r}-${day}`).innerHTML = html;
+  }
+  function cellInfo(r, day){
+    const el = document.getElementById(`cell-${r}-${day}`).firstElementChild;
+    if(!el) return null;
+    const type = el.dataset?.type;
+    const hours = el.dataset?.hours ? Number(el.dataset.hours) : null;
+    if(!type || hours==null || isNaN(hours)) return null;
+    return {type, hours, label: el.dataset.label, el};
+  }
+
   // mutual exclusive nello stesso giorno/utente
-  tbody.addEventListener('change', (e)=>{
-    const sel = e.target;
-    if(!sel.classList.contains('abs-hrs')) return;
-    const td = sel.closest('td'); const day = td.cellIndex - 1;
-    const type = sel.dataset.type;
-    if(Number(sel.value)>0){
-      // trova il blocco delle 2/3 sub-righe sotto lo stesso nome
-      const blockTop = (()=>{ let p=sel.closest('tr').previousElementSibling; while(p && !p.querySelector('.emp-name')) p=p.previousElementSibling; return p; })();
+  tbody.addEventListener('input', (e)=>{
+    const el = e.target;
+    if(!el.classList.contains('abs-num')) return;
+    const td = el.closest('td'); const day = td.cellIndex - 1;
+    const type = el.dataset.type;
+    const value = Number(el.value)||0;
+
+    if(value>0){
+      // trova top di blocco (riga con Nome)
+      const blockTop = (()=>{ let p=el.closest('tr').previousElementSibling; while(p && !p.querySelector('.emp-name')) p=p.previousElementSibling; return p; })();
       const subRows = []; let n=blockTop.nextElementSibling;
       while(n && n.querySelector('.subrow-label')){ subRows.push(n); n=n.nextElementSibling; }
       subRows.forEach(r=>{
         const lab=r.querySelector('.subrow-label').textContent.trim().toLowerCase();
-        if(lab!==type){ const other=r.children[day+1]?.querySelector('.abs-hrs'); if(other) other.value="0"; }
+        if(lab!==type){
+          const other=r.children[day+1]?.querySelector('.abs-num');
+          if(other) other.value="";
+        }
       });
     }
   });
@@ -184,20 +215,18 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
 
   function readAbsences(){
     const abs = {}; dips.forEach(n=>abs[n]=Array(7).fill({type:"none",hrs:0}));
-    // scorro per blocchi (nome + subrighe)
     let row=0, emp=0;
     while(row<tbody.children.length){
       const r = tbody.children[row];
       if(r.querySelector('.emp-name')){
         const name = dips[emp];
-        // subrighe
         let s=row+1;
         while(s<tbody.children.length && tbody.children[s].querySelector('.subrow-label')){
           const lab = tbody.children[s].querySelector('.subrow-label').textContent.trim().toLowerCase();
           for(let d=1; d<=7; d++){
-            const el = tbody.children[s].children[d]?.querySelector('.abs-hrs');
+            const el = tbody.children[s].children[d]?.querySelector('.abs-num');
             if(!el) continue;
-            const hrs=Number(el.value)||0;
+            const hrs = Number(el.value)||0;
             if(hrs>0) abs[name][d-1] = {type:lab, hrs};
           }
           s++;
@@ -209,8 +238,17 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
   }
 
   // helpers
-  function assignCell(r, day, html){ document.getElementById(`cell-${r}-${day}`).innerHTML = html; }
-  function cellHTML(r,day){ return document.getElementById(`cell-${r}-${day}`).innerHTML; }
+  function hasShift(r,day){ return !!document.getElementById(`cell-${r}-${day}`).firstElementChild?.dataset?.type; }
+  function countDay(day){
+    let open=0, close=0;
+    for(let r=0;r<dips.length;r++){
+      const info = cellInfo(r,day);
+      if(!info) continue;
+      if(info.type==='open') open++;
+      if(info.type==='close') close++;
+    }
+    return {open, close};
+  }
   function pickByRemain(cands, used, remain, minH, dir=1){
     const list = cands.filter(n=>!used.has(n) && remain[n]>=minH)
                       .sort((a,b)=> (remain[b]-remain[a]) || dir*b.localeCompare(a));
@@ -225,7 +263,7 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
     }catch(e){ console.error(e); alert("Errore durante il ricalcolo: "+e.message); }
   }
 
-  // ============ GENERATE con priorità Domenica ============
+  // ============ GENERATE (priorità Domenica) ============
   function generate(abs){
     // residui = contratto - assenze
     const remain={}, assigned={};
@@ -236,37 +274,30 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
         if(ev && ev.type!=="none"){ remain[name]=Math.max(0,remain[name]-ev.hrs); assigned[name].hours+=ev.hrs; }
       }
     }
-    // reset griglia
+    // reset
     for(let r=0;r<dips.length;r++){
       for(let d=0; d<7; d++){
         const ev=abs[dips[r]][d];
-        assignCell(r,d, ev && ev.type!=="none"
-          ? `<div class="rec" title="${ev.type.toUpperCase()} ${ev.hrs}h">${ev.type.toUpperCase()} ${ev.hrs}h</div>`
-          : `<div class="rest">riposo</div>`);
+        document.getElementById(`cell-${r}-${d}`).innerHTML =
+          (ev && ev.type!=="none") ? `<div class="rec" title="${ev.type.toUpperCase()} ${ev.hrs}h">${ev.type.toUpperCase()} ${ev.hrs}h</div>` : `<div class="rest">riposo</div>`;
       }
     }
 
-    // ordine giorni: DOM (6) → SAB (5) → LUN..VEN (0..4)
-    const dayOrder = [6,5,0,1,2,3,4];
-
-    // ruota anche l’ordine dei dipendenti ad ogni Rigenera
+    const dayOrder = [6,5,0,1,2,3,4]; // Dom, Sab, Lun..Ven
     const dipsOrdered = dips.slice(regenTick % dips.length).concat(dips.slice(0, regenTick % dips.length));
-
-    // combinazioni base ruotate
     const baseCombos0 = [
-      {openH:5, openLabel:"9–14", closeH:6, closeLabel:"14–20"},
-      {openH:6, openLabel:"9–15", closeH:5, closeLabel:"15–20"},
-      {openH:4, openLabel:"9–13", closeH:7, closeLabel:"13–20"}
+      {openH:5, closeH:6},
+      {openH:6, closeH:5},
+      {openH:4, closeH:7}
     ];
     const baseCombos = baseCombos0.map((_,i)=>baseCombos0[(i+regenTick)%baseCombos0.length]);
 
-    // assegna
+    // copertura base + compresenze
     for(const day of dayOrder){
       const available = dipsOrdered.filter(n=>abs[n][day].type==="none");
       const used = new Set();
       let paired=false;
 
-      // coppia base (copertura completa 9–20)
       for(const c of baseCombos){
         const opener = pickByRemain(available, used, remain, c.openH, regenTick%2===0?1:-1);
         if(!opener) continue;
@@ -274,67 +305,59 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
         const closer = pickByRemain(available.filter(n=>n!==opener), used, remain, c.closeH, regenTick%2===0?1:-1);
         if(!closer){ used.delete(opener); continue; }
 
-        const rOpen = dips.indexOf(opener), rClose = dips.indexOf(closer);
-        assignCell(rOpen, day, `<div class="open" title="${c.openLabel}">${c.openLabel}</div>`);
-        assignCell(rClose, day, `<div class="close" title="${c.closeLabel}">${c.closeLabel}</div>`);
+        const rOpen=dips.indexOf(opener), rClose=dips.indexOf(closer);
+        writeShiftCell(rOpen, day, 'open', c.openH);
+        writeShiftCell(rClose, day, 'close', c.closeH);
         remain[opener]-=c.openH; assigned[opener].hours+=c.openH;
         remain[closer]-=c.closeH; assigned[closer].hours+=c.closeH;
         used.add(closer); paired=true; break;
       }
-      if(!paired) continue; // se impossibile (assenze), si sistemerà manualmente
+      if(!paired) continue;
 
-      // compresenze extra (max 2+2)
       const preferCloseFirst = (regenTick%2===1);
-      const countShifts = ()=>{
-        let o=0,c=0;
-        for(let r=0;r<dips.length;r++){
-          const h = cellHTML(r,day);
-          if(/9–1[345]/.test(h)) o++;
-          if(/1[3-5]–20/.test(h)) c++;
-        }
-        return {o,c};
-      };
-
       for(let tries=0; tries<4; tries++){
-        const {o,c} = countShifts();
+        const cnt = countDay(day);
         const pool = dipsOrdered
-          .filter(n=>abs[n][day].type==="none" && cellHTML(dips.indexOf(n),day).includes('riposo'))
+          .filter(n=>abs[n][day].type==="none" && !hasShift(dips.indexOf(n),day))
           .sort((a,b)=> (remain[b]-remain[a]) || (preferCloseFirst?-1:1)*b.localeCompare(a));
 
-        if(preferCloseFirst && c<2 && pool.length){
+        if(preferCloseFirst && cnt.close<2 && pool.length){
           const n=pool.shift(), r=dips.indexOf(n);
           const opt=CLOSERS.find(x=>x.h<=remain[n]) || CLOSERS[CLOSERS.length-1];
-          if(remain[n]>=opt.h){ assignCell(r,day,`<div class="close" title="${opt.label}">${opt.label}</div>`); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
-        }else if(o<2 && pool.length){
+          if(remain[n]>=opt.h){ writeShiftCell(r,day,'close',opt.h); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
+        }else if(cnt.open<2 && pool.length){
           const n=pool.shift(), r=dips.indexOf(n);
           const opt=OPENERS.find(x=>x.h<=remain[n]) || OPENERS[OPENERS.length-1];
-          if(remain[n]>=opt.h){ assignCell(r,day,`<div class="open" title="${opt.label}">${opt.label}</div>`); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
-        }else if(!preferCloseFirst && c<2 && pool.length){
+          if(remain[n]>=opt.h){ writeShiftCell(r,day,'open',opt.h); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
+        }else if(!preferCloseFirst && cnt.close<2 && pool.length){
           const n=pool.shift(), r=dips.indexOf(n);
           const opt=CLOSERS.find(x=>x.h<=remain[n]) || CLOSERS[CLOSERS.length-1];
-          if(remain[n]>=opt.h){ assignCell(r,day,`<div class="close" title="${opt.label}">${opt.label}</div>`); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
+          if(remain[n]>=opt.h){ writeShiftCell(r,day,'close',opt.h); remain[n]-=opt.h; assigned[n].hours+=opt.h; }
         }else break;
       }
     }
 
-    // upgrade durate per chiudere scarti
+    // upgrade per chiudere scarti (usando dataset)
     function upgrade(r,day){
-      let html=cellHTML(r,day); const name=dips[r];
-      if(html.includes('9–13') && remain[name]>0){ html=html.replace('9–13','9–14'); remain[name]--; assigned[name].hours++; }
-      if(html.includes('9–14') && remain[name]>0){ html=html.replace('9–14','9–15'); remain[name]--; assigned[name].hours++; }
-      if(html.includes('15–20') && remain[name]>0){ html=html.replace('15–20','14–20'); remain[name]--; assigned[name].hours++; }
-      if(html.includes('14–20') && remain[name]>0){ html=html.replace('14–20','13–20'); remain[name]--; assigned[name].hours++; }
-      assignCell(r,day,html);
+      const info = cellInfo(r,day);
+      if(!info) return false;
+      const name=dips[r];
+      if(info.type==='open'){
+        if(info.hours===4 && remain[name]>0){ writeShiftCell(r,day,'open',5); remain[name]--; assigned[name].hours++; return true; }
+        if(info.hours===5 && remain[name]>0){ writeShiftCell(r,day,'open',6); remain[name]--; assigned[name].hours++; return true; }
+      }else{
+        if(info.hours===5 && remain[name]>0){ writeShiftCell(r,day,'close',6); remain[name]--; assigned[name].hours++; return true; }
+        if(info.hours===6 && remain[name]>0){ writeShiftCell(r,day,'close',7); remain[name]--; assigned[name].hours++; return true; }
+      }
+      return false;
     }
     for(let pass=0; pass<4; pass++){
       let moved=false;
       for(let r=0;r<dips.length;r++){
         while(remain[dips[r]]>0){
           let before=remain[dips[r]];
-          for(const day of [6,5,0,1,2,3,4]){ // upgrade dando priorità a dom/sab
-            const html=cellHTML(r,day);
-            if(/9–1[345]|1[3-5]–20/.test(html)) upgrade(r,day);
-            if(remain[dips[r]]===0) break;
+          for(const day of [6,5,0,1,2,3,4]){
+            if(upgrade(r,day) && remain[dips[r]]===0) break;
           }
           if(remain[dips[r]]===before) break;
           moved=true;
@@ -343,14 +366,16 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
       if(!moved) break;
     }
 
-    // REC: se lavoro la DOMENICA, metti REC sul primo slot libero LUN→VEN
+    // REC: se lavoro la DOMENICA, assegna su primo slot libero LUN→VEN
     for(let r=0;r<dips.length;r++){
-      const sun = cellHTML(r,6);
-      const workedSun = /9–1[345]|1[3-5]–20/.test(sun);
+      const info = cellInfo(r,6);
+      const workedSun = !!info; // se c'è un turno domenica
       if(workedSun){
-        for(const d of [0,1,2,3,4]){ // lun→ven
-          const h = cellHTML(r,d);
-          if(h.includes('riposo')){ assignCell(r,d,`<div class="rec" title="REC">REC</div>`); break; }
+        for(const d of [0,1,2,3,4]){
+          if(!cellInfo(r,d) && document.getElementById(`cell-${r}-${d}`).textContent.trim()==='riposo'){
+            document.getElementById(`cell-${r}-${d}`).innerHTML = `<div class="rec" title="REC">REC</div>`;
+            break;
+          }
         }
       }
     }
