@@ -43,8 +43,12 @@
   .delta-ok{color:var(--ok);font-weight:600}
   .delta-bad{color:var(--danger);font-weight:600}
   .alert{background:#fff7e6;border:1px solid #ffe5b4;border-radius:10px;padding:10px 12px;color:#8a6100}
-  .abs-select{width:130px}
+
   .abs-hrs{width:70px}
+  .abs-label{color:#374151;font-size:12px;padding-right:6px;white-space:nowrap}
+  .emp-name{font-weight:600}
+  .subrow-label{color:#6b7280;font-size:12px}
+  .emp-block-start td{border-top:2px solid #e5e7eb}
 </style>
 </head>
 <body>
@@ -63,10 +67,10 @@
   <!-- PLANNER -->
   <section class="card">
     <div class="card-header">
-      <h2 class="card-title">Proposta turni (blocchi ammessi: 9–13/14/15 • 13/14/15–20)</h2>
+      <h2 class="card-title">Proposta turni (9–13/14/15 • 13/14/15–20) – compresenza automatica</h2>
       <div class="controls">
         <button id="regen" class="pill">Rigenera</button>
-        <span class="muted">Compresenza gestita <b>in automatico</b> per chiudere i contratti.</span>
+        <button id="applyAbs" class="pill">Applica assenze</button>
       </div>
     </div>
 
@@ -84,29 +88,6 @@
     </div>
 
     <div id="impossibleAlert" class="alert" style="display:none; margin: 10px 16px 16px;"></div>
-  </section>
-
-  <!-- ASSENZE -->
-  <section class="card">
-    <div class="card-header">
-      <h2 class="card-title">Assenze programmate (Ferie / 104 / Malattia) – settimana proposta</h2>
-      <div class="controls"><button id="applyAbs" class="pill">Applica assenze</button></div>
-    </div>
-    <div class="grid-wrap">
-      <table id="absTable">
-        <thead>
-          <tr>
-            <th>Dipendente</th>
-            <th>Lunedì</th><th>Martedì</th><th>Mercoledì</th>
-            <th>Giovedì</th><th>Venerdì</th><th>Sabato</th><th>Domenica</th>
-          </tr>
-        </thead>
-        <tbody id="absBody"></tbody>
-      </table>
-    </div>
-    <div class="mini" style="padding:10px 16px 14px">
-      Ogni evento vale <b>ore di accredito</b> sul contratto (4/5/6/<b>7</b>) ma <b>non copre</b> la fascia del negozio: la copertura è riassegnata ad altri.
-    </div>
   </section>
 
   <!-- ORE -->
@@ -127,10 +108,10 @@
 // ====== CONFIG FISSI ======
 const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-// Contratti fissi (come richiesto)
+// Contratti fissi
 const CONTRACT_HOURS = { Ilenia:30, Cinzia:35, Vivien:35, Michela:32 };
 
-// Turni ammessi (niente centrali, solo estremi)
+// Turni ammessi (solo estremi)
 const OPENERS = [{h:6,label:"9–15"},{h:5,label:"9–14"},{h:4,label:"9–13"}];
 const CLOSERS = [{h:7,label:"13–20"},{h:6,label:"14–20"},{h:5,label:"15–20"}];
 
@@ -175,41 +156,75 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
   const daysLabel=["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
   for(let i=0;i<7;i++){ const d=addDays(start,i); document.getElementById("d"+i).textContent=`${daysLabel[i]} ${d.toLocaleDateString('it-IT')}`; }
 
-  // assenze UI
-  const absBody=document.getElementById("absBody");
-  function renderAbsTable(){
-    absBody.innerHTML = dips.map((name)=>`<tr>
-      <td>${name}</td>
-      ${Array.from({length:7},(_,di)=>`
-        <td>
-          <select class="abs-select" data-name="${name}" data-day="${di}">
-            <option value="none">—</option>
-            <option value="ferie">Ferie</option>
-            <option value="104">104</option>
-            <option value="malattia">Malattia</option>
-          </select>
-          <select class="abs-hrs" data-name="${name}" data-day="${di}">
-            <option value="7">7h</option>
-            <option value="6" selected>6h</option>
-            <option value="5">5h</option>
-            <option value="4">4h</option>
-          </select>
-        </td>
-      `).join("")}
-    </tr>`).join("");
+  // ===== TABLE RENDER (grid + 3 sub-rows per assenze) =====
+  const tbody=document.getElementById("tbody");
+
+  function renderSkeleton(){
+    tbody.innerHTML = dips.map((name, idx)=>{
+      const nameCell = `<td class="emp-name" rowspan="4">${name}</td>`;
+      const shiftRow = `<tr class="emp-block-start" data-emp="${name}" data-rowtype="shift">
+          ${nameCell}
+          ${Array.from({length:7},(_,d)=>`<td id="cell-${idx}-${d}"><div class="rest">riposo</div></td>`).join("")}
+        </tr>`;
+      const ferieRow = `<tr data-emp="${name}" data-rowtype="ferie"><td class="subrow-label">Ferie</td>
+          ${Array.from({length:7},(_,d)=>`<td>
+              <select class="abs-hrs" data-type="ferie" data-name="${name}" data-day="${d}">
+                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
+              </select>
+            </td>`).join("")}
+        </tr>`;
+      const malRow = `<tr data-emp="${name}" data-rowtype="malattia"><td class="subrow-label">Malattia</td>
+          ${Array.from({length:7},(_,d)=>`<td>
+              <select class="abs-hrs" data-type="malattia" data-name="${name}" data-day="${d}">
+                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
+              </select>
+            </td>`).join("")}
+        </tr>`;
+      const a104Row = `<tr data-emp="${name}" data-rowtype="104"><td class="subrow-label">104</td>
+          ${Array.from({length:7},(_,d)=>`<td>
+              <select class="abs-hrs" data-type="104" data-name="${name}" data-day="${d}">
+                <option value="0">—</option><option value="4">4h</option><option value="5">5h</option><option value="6">6h</option><option value="7">7h</option>
+              </select>
+            </td>`).join("")}
+        </tr>`;
+      return shiftRow + ferieRow + malRow + a104Row;
+    }).join("");
   }
-  renderAbsTable();
+
+  renderSkeleton();
+
+  // mutual exclusivity: quando scegli ore su un tipo, azzera gli altri due nello stesso giorno/dip
+  tbody.addEventListener('change', (e)=>{
+    const sel = e.target;
+    if(!sel.classList.contains('abs-hrs')) return;
+    const day = +sel.dataset.day, name = sel.dataset.name, type = sel.dataset.type, val = +sel.value;
+    if(val>0){
+      ["ferie","malattia","104"].forEach(t=>{
+        if(t!==type){
+          const other = tbody.querySelector(`.abs-hrs[data-type="${t}"][data-name="${name}"][data-day="${day}"]`);
+          if(other) other.value = "0";
+        }
+      });
+    }
+  });
+
   document.getElementById("applyAbs").addEventListener("click", regenerate);
   document.getElementById("regen").addEventListener("click", regenerate);
 
   function readAbsences(){
-    const abs = {}; dips.forEach(n=>abs[n]=Array(7).fill({type:"none", hrs:0}));
-    document.querySelectorAll('.abs-select').forEach(sel=>{
-      const name=sel.dataset.name, day=+sel.dataset.day;
-      const hrsSel = document.querySelector(`.abs-hrs[data-name="${name}"][data-day="${day}"]`);
-      const type = sel.value;
-      const hrs = type==="none" ? 0 : parseInt(hrsSel.value,10)||0;
-      abs[name][day] = {type, hrs};
+    const abs={}; dips.forEach(n=>abs[n]=Array(7).fill({type:"none",hrs:0}));
+    tbody.querySelectorAll('.abs-hrs').forEach(sel=>{
+      const name=sel.dataset.name, day=+sel.dataset.day, type=sel.dataset.type, hrs=+sel.value||0;
+      if(hrs>0){
+        abs[name][day] = {type, hrs};
+      } else {
+        // se nessuno dei tre selettori ha ore, resta none
+        const trio = ["ferie","malattia","104"].map(t=>{
+          const el = tbody.querySelector(`.abs-hrs[data-type="${t}"][data-name="${name}"][data-day="${day}"]`);
+          return el ? +el.value : 0;
+        });
+        if(trio.every(v=>v===0)) abs[name][day] = {type:"none", hrs:0};
+      }
     });
     return abs;
   }
@@ -221,31 +236,7 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
     render(plan);
   }
 
-  // helper: somma ore residue totali
-  function totalRemain(rem){ return Object.values(rem).reduce((a,b)=>a+b,0); }
-
-  // seleziona candidato per ruolo evitando chi ha già turno oggi e con ore residue sufficienti
-  function pickCandidate(cands, usedToday, remain, minHours){
-    const sorted = cands
-      .filter(n => !usedToday.has(n) && remain[n] >= minHours)
-      .sort((a,b)=>remain[b]-remain[a]);
-    return sorted[0] || null;
-  }
-
-  // assegnazione singolo blocco
-  function assignBlock(grid, day, person, type, remain, assigned){
-    const isClose = (type==="close");
-    const options = isClose ? CLOSERS : OPENERS; // già ordinate da più lunga a più corta
-    // scegli la durata più lunga che non supera le ore residue
-    let opt = options.find(o=>o.h<=remain[person]) || options[options.length-1];
-    // ma assicurati di non andare a 0-3h residue se è l'ultimo giorno utile per quella persona
-    remain[person] -= opt.h;
-    assigned[person].hours += opt.h;
-    const css = isClose ? "close" : "open";
-    const label = opt.label;
-    grid[dips.indexOf(person)][day] = `<div class="${css}" title="${label}">${label}</div>`;
-    return opt.h;
-  }
+  function assignCell(r, day, html){ document.getElementById(`cell-${r}-${day}`).innerHTML = html; }
 
   function generate(abs){
     // ore residue iniziali = contratto - accrediti assenze
@@ -256,136 +247,195 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
         const ev=abs[name][d];
         if(ev && ev.type!=="none"){
           remain[name] = Math.max(0, remain[name] - ev.hrs);
-          assigned[name].hours += ev.hrs; // accredito su contratto
+          assigned[name].hours += ev.hrs;
         }
       }
     }
 
-    // griglia iniziale: riposo o evento
-    const grid=Array.from({length:dips.length}, ()=>Array(7).fill('<div class="rest">riposo</div>'));
+    // reset griglia turni (riga principale)
     for(let r=0;r<dips.length;r++){
-      const name=dips[r];
       for(let d=0; d<7; d++){
-        const ev=abs[name][d];
+        const ev=abs[dips[r]][d];
         if(ev && ev.type!=="none"){
-          const label = ev.type.toUpperCase()+" "+ev.hrs+"h";
-          grid[r][d]=`<div class="rec" title="${label}">${label}</div>`;
+          assignCell(r,d, `<div class="rec" title="${ev.type.toUpperCase()} ${ev.hrs}h">${ev.type.toUpperCase()} ${ev.hrs}h</div>`);
+        } else {
+          assignCell(r,d, `<div class="rest">riposo</div>`);
         }
       }
     }
 
-    // pianifica giorno per giorno con compresenza automatica
-    for(let day=0; day<7; day++){
-      const usedToday = new Set();
-      const available = dips.filter(n => (abs[n][day]?.type||"none")==="none");
+    // helper
+    const dayCount = (day)=> {
+      let opens=0, closes=0;
+      for(let r=0;r<dips.length;r++){
+        const html = document.getElementById(`cell-${r}-${day}`).innerHTML;
+        if(/9–1[345]/.test(html)) opens++;
+        if(/1[3-5]–20/.test(html)) closes++;
+      }
+      return {opens, closes};
+    };
+    const hasShift = (r,day)=> !document.getElementById(`cell-${r}-${day}`).innerHTML.includes('riposo')
+                                && !document.getElementById(`cell-${r}-${day}`).innerHTML.includes('FERIE')
+                                && !document.getElementById(`cell-${r}-${day}`).innerHTML.includes('MALATTIA')
+                                && !document.getElementById(`cell-${r}-${day}`).innerHTML.includes('104');
 
-      // === BASE PAIR (copertura 9–20) ===
-      // prova 9–14 + 14–20, poi 9–15 + 15–20, poi 9–13 + 13–20
-      const baseCombos = [
-        {openH:5, closeH:6, openLabel:"9–14", closeLabel:"14–20"},
-        {openH:6, closeH:5, openLabel:"9–15", closeLabel:"15–20"},
-        {openH:4, closeH:7, openLabel:"9–13", closeLabel:"13–20"},
+    const availOn = (day)=> dips.filter((name, r)=>{
+      const ev = abs[name][day];
+      return ev.type==="none" && !hasShift(r,day) && remain[name]>=4;
+    });
+
+    // === assegnazione BASE per copertura 9–20 (coppia) ===
+    for(let day=0; day<7; day++){
+      const available = dips.filter(n=>abs[n][day].type==="none");
+      const used = new Set();
+
+      const combos = [
+        {openH:5, openLabel:"9–14", closeH:6, closeLabel:"14–20"},
+        {openH:6, openLabel:"9–15", closeH:5, closeLabel:"15–20"},
+        {openH:4, openLabel:"9–13", closeH:7, closeLabel:"13–20"}
       ];
 
-      let baseDone=false;
-      for(const comb of baseCombos){
-        const opener = pickCandidate(available, usedToday, remain, comb.openH);
+      let paired=false;
+      for(const c of combos){
+        const opener = pickByRemain(available, used, remain, c.openH);
         if(!opener) continue;
-        usedToday.add(opener);
-        // trova closer diverso
-        const closer = pickCandidate(available.filter(n=>n!==opener), usedToday, remain, comb.closeH);
-        if(!closer){ usedToday.delete(opener); continue; }
+        used.add(opener);
+        const closer = pickByRemain(available.filter(n=>n!==opener), used, remain, c.closeH);
+        if(!closer){ used.delete(opener); continue; }
 
-        // assegna
-        grid[dips.indexOf(opener)][day] = `<div class="open" title="${comb.openLabel}">${comb.openLabel}</div>`;
-        remain[opener]-=comb.openH; assigned[opener].hours+=comb.openH;
-
-        grid[dips.indexOf(closer)][day] = `<div class="close" title="${comb.closeLabel}">${comb.closeLabel}</div>`;
-        remain[closer]-=comb.closeH; assigned[closer].hours+=comb.closeH;
-
-        usedToday.add(closer);
-        baseDone=true;
+        // assign
+        const rOpen = dips.indexOf(opener), rClose = dips.indexOf(closer);
+        assignCell(rOpen, day, `<div class="open" title="${c.openLabel}">${c.openLabel}</div>`);
+        assignCell(rClose, day, `<div class="close" title="${c.closeLabel}">${c.closeLabel}</div>`);
+        remain[opener]-=c.openH; assigned[opener].hours+=c.openH;
+        remain[closer]-=c.closeH; assigned[closer].hours+=c.closeH;
+        used.add(closer);
+        paired=true;
         break;
       }
+      if(!paired){ /* lascio buco da sistemare a mano */ }
+    }
 
-      if(!baseDone){
-        // fallback: se non si riesce (assenze forti), salta — sarà da sistemare manualmente
-        continue;
-      }
-
-      // === COMPRESENZE AUTOMATICHE ===
-      // obiettivo: garantire che la somma ore residua sia raggiungibile nei giorni rimanenti
-      // capacità massima per giorno = fino a 4 persone: max 2 aperture + 2 chiusure
-      const daysLeftAfter = 6 - day;
-      const maxPerDay = 24; // (9–15,9–14) + (13–20,14–20) = 6+5+7+6
-      const todayAssigned = () => dips.reduce((sum, n, r)=> {
-        const cell = grid[r][day]; 
-        if(cell.includes('9–13')) return sum+4;
-        if(cell.includes('9–14')) return sum+5;
-        if(cell.includes('9–15')) return sum+6;
-        if(cell.includes('15–20')) return sum+5;
-        if(cell.includes('14–20')) return sum+6;
-        if(cell.includes('13–20')) return sum+7;
-        return sum;
-      },0);
-
-      // aggiungi extra turni finché serve e finché ci sono persone libere
-      while(true){
-        const remTot = totalRemain(remain);
-        const capFuture = daysLeftAfter * maxPerDay;
-        // se senza extra oggi il fabbisogno non è raggiungibile, aggiungi una compresenza
-        if (remTot > capFuture + (maxPerDay - todayAssigned()) && usedToday.size < Math.min(4, available.length)){
-          // scegli lato: se la somma residua è molto alta, preferisci CHIUSURA lunga (13–20),
-          // altrimenti A P E R T U R A.
-          const preferClose = remTot - capFuture > 6; // euristica
-          if(preferClose){
-            const cand = pickCandidate(available, usedToday, remain, 5); // chiusura min 5h
-            if(!cand) break;
-            // assegna la massima chiusura possibile compatibile con ore residue
-            let assignedH = 0;
-            if(remain[cand] >= 7) { grid[dips.indexOf(cand)][day]=`<div class="close" title="13–20">13–20</div>`; assignedH=7; }
-            else if(remain[cand] >= 6) { grid[dips.indexOf(cand)][day]=`<div class="close" title="14–20">14–20</div>`; assignedH=6; }
-            else { grid[dips.indexOf(cand)][day]=`<div class="close" title="15–20">15–20</div>`; assignedH=5; }
-            remain[cand]-=assignedH; assigned[cand].hours+=assignedH; usedToday.add(cand);
-          }else{
-            const cand = pickCandidate(available, usedToday, remain, 4); // apertura min 4h
-            if(!cand) break;
-            let assignedH = 0;
-            if(remain[cand] >= 6) { grid[dips.indexOf(cand)][day]=`<div class="open" title="9–15">9–15</div>`; assignedH=6; }
-            else if(remain[cand] >= 5) { grid[dips.indexOf(cand)][day]=`<div class="open" title="9–14">9–14</div>`; assignedH=5; }
-            else { grid[dips.indexOf(cand)][day]=`<div class="open" title="9–13">9–13</div>`; assignedH=4; }
-            remain[cand]-=assignedH; assigned[cand].hours+=assignedH; usedToday.add(cand);
-          }
-        } else {
-          break;
+    // === compresenze automatiche per chiudere capacità globale ===
+    // fino a 2 aperture e 2 chiusure per giorno (max 4 persone)
+    for(let pass=0; pass<2; pass++){
+      for(let day=0; day<7; day++){
+        const cnt = dayCount(day);
+        // se c'è spazio a sinistra (aperture)
+        while(cnt.opens<2){
+          const who = pickByRemain(availOn(day), new Set(), remain, 4);
+          if(!who) break;
+          const r = dips.indexOf(who);
+          // prendi la più lunga possibile senza superare
+          const opt = OPENERS.find(o=>o.h<=remain[who]) || OPENERS[OPENERS.length-1];
+          assignCell(r, day, `<div class="open" title="${opt.label}">${opt.label}</div>`);
+          remain[who]-=opt.h; assigned[who].hours+=opt.h;
+          cnt.opens++;
+        }
+        // se c'è spazio a destra (chiusure)
+        while(cnt.closes<2){
+          const who = pickByRemain(availOn(day), new Set(), remain, 5);
+          if(!who) break;
+          const r = dips.indexOf(who);
+          const opt = CLOSERS.find(o=>o.h<=remain[who]) || CLOSERS[CLOSERS.length-1];
+          assignCell(r, day, `<div class="close" title="${opt.label}">${opt.label}</div>`);
+          remain[who]-=opt.h; assigned[who].hours+=opt.h;
+          cnt.closes++;
         }
       }
     }
 
-    // Domenica → REC tra mar(1) e ven(4) sulla prima casella "riposo"
+    // === REPAIR: upgrade durate per chiudere esattamente i contratti ===
+    function upgradeIfPossible(r, day, needed){
+      let html = document.getElementById(`cell-${r}-${day}`).innerHTML;
+      if(html.includes('9–13') && needed>=1){ html=html.replace('9–13','9–14'); remain[dips[r]]-=1; assigned[dips[r]].hours+=1; }
+      if(html.includes('9–14') && needed>=1){ html=html.replace('9–14','9–15'); remain[dips[r]]-=1; assigned[dips[r]].hours+=1; }
+      if(html.includes('15–20') && needed>=1){ html=html.replace('15–20','14–20'); remain[dips[r]]-=1; assigned[dips[r]].hours+=1; }
+      if(html.includes('14–20') && needed>=1){ 
+        // solo se non rompe l'apertura (resta sempre >= 9–13 coperto): OK
+        html=html.replace('14–20','13–20'); remain[dips[r]]-=1; assigned[dips[r]].hours+=1; 
+      }
+      assignCell(r, day, html);
+    }
+
+    // pass di upgrade finché possibile o chiuso
+    for(let pass=0; pass<4; pass++){
+      let progressed=false;
+      for(let r=0;r<dips.length;r++){
+        const name=dips[r]; let need=remain[name];
+        if(need<=0) continue;
+        for(let day=0; day<7 && need>0; day++){
+          // se ha già un turno quel giorno: prova upgrade
+          if(hasShift(r,day)){
+            const before = remain[name];
+            upgradeIfPossible(r,day, need);
+            need = remain[name];
+            if(need < before) progressed=true;
+          }
+        }
+      }
+      if(!progressed) break;
+    }
+
+    // === REPAIR 2: aggiunte mirate su giorni con spazio (fino a 2+2) ===
+    for(let pass=0; pass<3; pass++){
+      let progressed=false;
+      for(let r=0;r<dips.length;r++){
+        const name=dips[r]; let need=remain[name];
+        if(need<=0) continue;
+        for(let day=0; day<7 && need>0; day++){
+          if(abs[name][day].type!=="none") continue;
+          if(hasShift(r,day)) continue; // max 1 turno
+          const cnt = dayCount(day);
+          // scegli lato in base al need: privilegia chiusura lunga se serve tanta ora
+          const preferClose = need>=6;
+          if(preferClose && cnt.closes<2){
+            // prova 13–20, poi 14–20, poi 15–20
+            const opts = CLOSERS.filter(o=>o.h<=remain[name]);
+            if(opts.length){
+              const opt = opts[0];
+              assignCell(r, day, `<div class="close" title="${opt.label}">${opt.label}</div>`);
+              remain[name]-=opt.h; assigned[name].hours+=opt.h; progressed=true;
+            }
+          } else if(cnt.opens<2){
+            const opts = OPENERS.filter(o=>o.h<=remain[name]);
+            if(opts.length){
+              const opt = opts[0];
+              assignCell(r, day, `<div class="open" title="${opt.label}">${opt.label}</div>`);
+              remain[name]-=opt.h; assigned[name].hours+=opt.h; progressed=true;
+            }
+          }
+        }
+      }
+      if(!progressed) break;
+    }
+
+    // REC post-domenica su primo slot libero tra mar→ven
     for(let r=0;r<dips.length;r++){
-      const workedSun = !grid[r][6].includes('riposo') && !grid[r][6].includes('FERIE') && !grid[r][6].includes('104') && !grid[r][6].includes('MALATTIA');
+      const sunHtml = document.getElementById(`cell-${r}-6`).innerHTML;
+      const workedSun = /9–1[345]|1[3-5]–20/.test(sunHtml);
       if(workedSun){
         for(const d of [1,2,3,4]){
-          if(grid[r][d].includes('riposo')){ grid[r][d]=`<div class="rec" title="REC">REC</div>`; break; }
+          const html = document.getElementById(`cell-${r}-${d}`).innerHTML;
+          if(html.includes('riposo')){
+            assignCell(r,d, `<div class="rec" title="REC">REC</div>`);
+            break;
+          }
         }
       }
     }
 
-    return {grid, assigned, remain};
+    return {assigned, remain};
   }
 
-  function render(result){
-    const {grid, assigned, remain}=result;
+  function pickByRemain(cands, used, remain, minH){
+    const list = cands.filter(n=>!used.has(n) && remain[n]>=minH)
+                      .sort((a,b)=>remain[b]-remain[a]);
+    return list[0] || null;
+  }
 
-    // tabella turni
-    const tbody=document.getElementById("tbody");
-    tbody.innerHTML=dips.map((name,r)=>`<tr>
-      <td>${name}</td>
-      ${grid[r].map(cell=>`<td>${cell}</td>`).join("")}
-    </tr>`).join("");
-
-    // tabella ore
+  function render({assigned, remain}){
+    // ore
     const hBody=document.getElementById("hoursBody");
     let allExact=true;
     hBody.innerHTML = dips.map(name=>{
@@ -405,11 +455,11 @@ async function fetchCSV(url){ const r=await fetch(url); if(!r.ok) throw new Erro
     const alertEl=document.getElementById("impossibleAlert");
     if(!allExact){
       alertEl.style.display='block';
-      alertEl.innerHTML = `⚠️ Non è stato possibile chiudere <b>esattamente</b> tutte le ore di contratto con le assenze e i vincoli correnti.
+      alertEl.innerHTML = `⚠️ Nonostante compresenza automatica e riparazioni, non tutte le ore sono chiuse <b>esattamente</b>.
       Suggerimenti:
       <ul>
-        <li>verifica le <b>Assenze</b> (ore accreditate) e ridistribuisci;</li>
-        <li>se necessario, modifica manualmente qualche durata (es. preferire 13–20 o 9–15 per aumentare ore).</li>
+        <li>verifica <b>assenze</b> inserite e le loro ore;</li>
+        <li>se restano 1–2h di scarto, prova a variare le durate in uno dei giorni (es. 9–14 → 9–15, 14–20 → 13–20) direttamente in tabella, poi clicca <b>Rigenera</b>.</li>
       </ul>`;
     } else {
       alertEl.style.display='none';
