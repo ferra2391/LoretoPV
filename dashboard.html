@@ -16,6 +16,7 @@
     header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
     .wrap{ max-width: 1680px; margin:0 auto; padding:18px 20px; }
 
+
     /* HEADER centrato */
     header .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
     h1{ margin:0; font-size:22px; color:var(--head); }
@@ -72,17 +73,6 @@
     .notes table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px; min-width: 680px; }
     .notes th,.notes td{ padding:10px 8px; border-bottom:1px solid var(--border) }
     .notes thead th{ background:#fff; position:sticky; top:0; z-index:1 }
-
-    /* Controls */
-    .controls{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-    .pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid var(--border); border-radius:12px; background:#fff; font-size:14px }
-    .pill input{ width:16px; height:16px }
-    .actions{ margin-left:auto; display:flex; gap:10px }
-    .btn{ border:1px solid var(--border); background:#0b1220; color:#fff; padding:8px 12px; border-radius:10px; font-size:14px; cursor:pointer }
-    .btn:active{ transform: translateY(1px) }
-      .plan-head{ font-weight:700 }
-    .slot-select{ width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:14px }
-    .plan-wrap table{ min-width:1100px }
   </style>
 </head>
 <body>
@@ -98,24 +88,6 @@
   </header>
 
   <main class="wrap" aria-live="polite">
-    <!-- CONTROLLI "A CASA" -->
-    <section class="card" aria-label="Impostazioni Weekend Lungo">
-      <div class="card-header"><h2 class="card-title">Cosa considerare come “a casa”</h2></div>
-      <div class="card-body">
-        <div class="controls" id="homeControls">
-          <label class="pill"><input type="checkbox" value="ferie" checked> Ferie</label>
-          <label class="pill"><input type="checkbox" value="rec"> REC</label>
-          <label class="pill"><input type="checkbox" value="riposo" checked> Riposo</label>
-          <label class="pill"><input type="checkbox" value="104" checked> 104</label>
-          <label class="pill"><input type="checkbox" value="malattia" checked> Malattia</label>
-          <div class="actions">
-            <button class="btn" id="btnAggiorna" aria-label="Ricalcola">Aggiorna</button>
-          </div>
-        </div>
-        <div class="range" style="margin-top:8px">Seleziona una o più voci; clicca <b>Aggiorna</b> per ricalcolare gli eventi “Weekend lunghi”. La legenda sotto si aggiorna automaticamente.</div>
-      </div>
-    </section>
-
     <section class="card" aria-label="Riepilogo per dipendente">
       <div class="card-header"><h2 class="card-title">Riepilogo per dipendente</h2></div>
       <div class="card-body">
@@ -143,31 +115,13 @@
       </div>
     </section>
 
-    <!-- PIANIFICAZIONE SETTIMANA SUCCESSIVA -->
-    <section class="card" aria-label="Pianificazione settimana successiva">
-      <div class="card-header"><h2 class="card-title">Pianificazione settimana successiva</h2></div>
-      <div class="card-body">
-        <div id="planInfo" class="range">Settimana pianificata: —</div>
-        <div class="table-wrap plan-wrap" style="margin-top:8px; max-height:50vh;">
-          <table>
-            <thead id="planThead"></thead>
-            <tbody id="planTbody"></tbody>
-          </table>
-        </div>
-        <div class="actions" style="margin-top:10px; display:flex; gap:10px;">
-          <button class="btn" id="btnVerifica" aria-label="Verifica rispetto consigli">Verifica piano</button>
-        </div>
-        <div id="feedbackBox" class="range" style="margin-top:8px; font-size:14px;"></div>
-      </div>
-    </section>
-
     <!-- LEGENDA -->
     <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
       <div class="card-body legend">
         <h3>Weekend Lunghi</h3>
         <ul>
-          <li id="homeLegend"><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
+          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
@@ -209,8 +163,6 @@
     // Link pubhtml (immutato)
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
-    // --- UTILS ---------------------------------------------------------------
-    const DAY_NAMES = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
     function getPubInfo(pubhtml){
       const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
@@ -271,127 +223,43 @@
       return holidaysMap.get(y).has(toYMD(date));
     }
 
-    // Normalizzazione testo celle
-    function norm(s){
-      return (s||"").toString()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-        .toLowerCase().replace(/\s+/g,' ').trim();
-    }
+    (async function main(){
+      // Badges
+      const now = new Date();
+      document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
+      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`;
 
-    // Mappa categorie -> matcher (su stringa normalizzata)
-    const CAT_MATCH = {
-      ferie:    x => x.includes('ferie'),
-      rec:      x => /\brec(\b|[^a-z])/.test(x) || x.includes('recuper'),
-      riposo:   x => x.includes('riposo'),
-      '104':    x => /\b104\b/.test(x),
-      malattia: x => x.includes('malattia')
-    };
+      const { pubId, gid } = getPubInfo(PUBHTML);
+      let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+      let rows;
+      try { rows = await fetchCSV(csvUrl); }
+      catch(e1){ csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`; rows = await fetchCSV(csvUrl); }
 
-    // Default categorie selezionate
-    const DEFAULT_HOME_CATS = new Set(['ferie','riposo','104','malattia']); // REC opzionale
+      const headerKeys = rows.length ? Object.keys(rows[0]) : [];
+      const colData = headerKeys.find(k => k.toLowerCase().includes("data"));
+      if (!colData) throw new Error("Colonna 'Data' non trovata.");
+      const dipCols = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
+      const dipendenti = dipCols.slice();
 
-    function loadCats(){
-      try{
-        const raw = localStorage.getItem('homeCats');
-        if(!raw) return new Set(DEFAULT_HOME_CATS);
-        const arr = JSON.parse(raw);
-        return new Set(arr.filter(v => ['ferie','rec','riposo','104','malattia'].includes(v)));
-      }catch{ return new Set(DEFAULT_HOME_CATS); }
-    }
-    function saveCats(set){
-      localStorage.setItem('homeCats', JSON.stringify([...set]));
-    }
-    function getSelectedCats(){
-      const boxes = document.querySelectorAll('#homeControls input[type="checkbox"]');
-      const out = new Set();
-      boxes.forEach(b => { if(b.checked) out.add(b.value); });
-      return out;
-    }
-    function setSelectedCats(set){
-      const boxes = document.querySelectorAll('#homeControls input[type="checkbox"]');
-      boxes.forEach(b => { b.checked = set.has(b.value); });
-    }
-
-    function formatCatsForLegend(set){
-      const order = ['ferie','rec','riposo','104','malattia'];
-      const label = {
-        ferie:'FERIE', rec:'REC', riposo:'RIPOSO', '104':'104', malattia:'MALATTIA'
-      };
-      const pills = order.filter(c => set.has(c)).map(c => `<code>${label[c]}</code>`).join(', ');
-      return `<b>Conta come “a casa”:</b> ${pills || '<span class="muted">(nessuna categoria selezionata)</span>'}.`;
-    }
-
-    // Stato globale dati grezzi
-    let ADVICE = {}; // target di aumento/diminuzione per metrica
-    let NEXT_WEEK_DATES = []; // array di 7 Date (Lun..Dom) della settimana successiva
-    let PLANNING_WEEK_KEY = null; // es. "2025-W38"
-
-    // Helpers ISO week
-    function isoWeekMonday(date){ // restituisce il lunedì della settimana ISO della data
-      const d = new Date(date);
-      const day = d.getDay() || 7; // 1..7 (lun..dom)
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - day + 1);
-      monday.setHours(0,0,0,0);
-      return monday;
-    }
-    function nextIsoWeekDates(fromDate){
-      const thisMon = isoWeekMonday(fromDate);
-      const nextMon = addDays(thisMon, 7);
-      const days = Array.from({length:7}, (_,i)=> addDays(nextMon, i));
-      const sun = days[6];
-      const key = `${isoWeekYear(sun)}-W${String(isoWeek(sun)).padStart(2,'0')}`;
-      return { days, key };
-    }
-
-    // Persistenza piano (per settimana pianificata)
-    function getPlan(){
-      try{
-        const raw = localStorage.getItem('plan_'+PLANNING_WEEK_KEY);
-        return raw ? JSON.parse(raw) : {};
-      }catch{return {} }
-    }
-    function savePlan(plan){
-      localStorage.setItem('plan_'+PLANNING_WEEK_KEY, JSON.stringify(plan));
-    }
-    let RAW_ROWS = [];
-    let DIP_COLS = [];
-    let COL_DATA = null;
-
-    // --- RENDER ----------------------------------------------------------------
-    function syncLegend(homeCats){
-      const li = document.getElementById('homeLegend');
-      if(li) li.innerHTML = formatCatsForLegend(homeCats);
-    }
-
-    function resetHeaderHighlights(){
-      const ids = ['th-ap','th-ch','th-apwe','th-chwe','th-fe','th-ri','th-104','th-ma','th-evn'];
-      ids.forEach(id => {
-        const th = document.getElementById(id);
-        th?.classList.remove('balanced-col','balanced-outline');
-      });
-    }
-
-    function computeAndRender(homeCats){
-      resetHeaderHighlights();
-      syncLegend(homeCats);
-
+      // Indice per data e range (min/max) per "Dati elaborati dal…al…"
       const byDate = new Map();
       const holidaysMap = new Map();
       let minDate = null, maxDate = null;
 
-      // Stat struttura per dipendente
+      // Stat
       const stats = {};
-      DIP_COLS.forEach(d => stats[d] = {
+      dipendenti.forEach(d => stats[d] = {
         aperture:0, chiusure:0,
         apertureWEFest:0, chiusureWEFest:0,
         ferie:0, riposo:0, "104":0, malattia:0,
         eventsWeeksAll: new Set()
       });
 
-      for (const row of RAW_ROWS){
-        const dt = parseItaDate(row[COL_DATA]);
+      // Conteggi base + indice + range date
+      for (const row of rows){
+        const dt = parseItaDate(row[colData]);
         if (!dt || isNaN(+dt)) continue;
+        // aggiorna range
         if (!minDate || dt < minDate) minDate = dt;
         if (!maxDate || dt > maxDate) maxDate = dt;
 
@@ -402,7 +270,7 @@
         if (!byDate.has(ymd)) byDate.set(ymd, {});
         const dayObj = byDate.get(ymd);
 
-        for (const col of DIP_COLS){
+        for (const col of dipCols){
           const raw = (row[col] || "").toString().trim().toLowerCase();
           dayObj[col] = raw;
 
@@ -423,7 +291,7 @@
         }
       }
 
-      // Mostra range date
+      // Mostra range date sotto ai badge
       const rangeEl = document.getElementById('rangeInfo');
       if (minDate && maxDate){
         rangeEl.textContent = `Dati elaborati dal ${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al ${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})}`;
@@ -431,20 +299,13 @@
         rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
+      // Helper “a casa”
+      const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
-      const today = new Date();
-      const curW = isoWeek(today), curY = isoWeekYear(today);
-
-      function isHome(val){
-        const x = norm(val);
-        if(!x) return false;
-        for (const c of homeCats){ if (CAT_MATCH[c] && CAT_MATCH[c](x)) return true; }
-        return false;
-      }
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Eventi “a casa”
+      // Eventi “a casa” — combinazioni richieste
       for (const ymd of allDates){
         const d = new Date(ymd);
         if (d.getDay() !== 0) continue; // solo domeniche
@@ -453,7 +314,7 @@
         const monHoliday = isHoliday(mon, holidaysMap);
         const wKey = isoWeekKey(sun);
 
-        for (const col of DIP_COLS){
+        for (const col of dipCols){
           const friHome = isHome(get(toYMD(fri), col));
           const satHome = isHome(get(toYMD(sat), col));
           const sunHome = isHome(get(toYMD(sun), col));
@@ -472,7 +333,11 @@
         }
       }
 
-      const dipendenti = [...DIP_COLS];
+      // % eventi a casa rispetto alla settimana ISO odierna (anno ISO corrente)
+      const today = new Date();
+      const curW = isoWeek(today), curY = isoWeekYear(today);
+
+      // Righe per tabella
       const rowsRender = dipendenti.map(d => {
         const s = stats[d];
         const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
@@ -493,12 +358,14 @@
         };
       });
 
+      // Colonne valutate con bollini (incluso Eventi a casa n), NO bollini su riposo/104/malattia
       const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
       const headerIdByKey = {
         aperture:"th-ap", chiusure:"th-ch", apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
         ferie:"th-fe", riposo:"th-ri", "104":"th-104", malattia:"th-ma", _eventsN:"th-evn"
       };
 
+      // Valutazione bilanciamento (soglia 5pp) e outlier (più lontano da 1/N)
       function assessBalanceShares(values){
         const sum = values.reduce((a,b)=>a+b,0);
         if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
@@ -517,9 +384,11 @@
         return { balanced, outIndex, shares, spread, maxShare, minShare };
       }
 
+      // Prepara valori per metrica
       const perMetricValues = {};
       Object.keys(headerIdByKey).forEach(k => perMetricValues[k] = rowsRender.map(r => r[k]));
 
+      // Stato colonne e header verde
       const columnStatus = {};
       for (const key of DOT_KEYS){
         const vals = perMetricValues[key];
@@ -531,6 +400,7 @@
         }
       }
 
+      // Render tabella
       const tbody = document.getElementById("riepilogo");
       tbody.innerHTML = rowsRender.map((r, rowIdx) => {
         function cell(key, extraCls="", isNum=true){
@@ -560,227 +430,40 @@
         </tr>`;
       }).join("");
 
-      // NOTE "aumentare/diminuire"
+      // NOTE per prossima settimana — “aumentare a / diminuire a” con nomi in grassetto e gruppi pari-min/max
       function humanListBold(names){
         if (names.length === 1) return `<b>${names[0]}</b>`;
         if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
         return names.slice(0,-1).map(n=>`<b>${n}</b>`).join(", ") + ` e <b>${names.slice(-1)[0]}</b>`;
       }
-      function adviceObjective(values, labels, what, key){
+      function adviceObjective(values, labels, what){
         const st = assessBalanceShares(values);
-        if (st.balanced){
-          ADVICE[key] = { balanced:true, increase:[], decrease:[] };
-          return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        }
+        if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
         const sum = values.reduce((a,b)=>a+b,0);
         const shares = values.map(v => v/sum);
         const max = Math.max(...shares), min = Math.min(...shares);
         const maxGroup = labels.filter((_,i)=>shares[i]===max);
         const minGroup = labels.filter((_,i)=>shares[i]===min);
+
         const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
-        ADVICE[key] = { balanced:false, increase: minGroup, decrease: maxGroup };
-        return isHighOut
-          ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
-          : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
-      }: distribuzione bilanciata — nessuna azione specifica.`;
-        const sum = values.reduce((a,b)=>a+b,0);
-        const shares = values.map(v => v/sum);
-        const max = Math.max(...shares), min = Math.min(...shares);
-        const maxGroup = labels.filter((_,i)=>shares[i]===max);
-        const minGroup = labels.filter((_,i)=>shares[i]===min);
-        const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
-        return isHighOut
-          ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
-          : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
+return isHighOut
+  ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
+  : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
+
       }
 
-      const labels = [...DIP_COLS];
+      const labels = dipendenti;
       const notes = [
-        adviceObjective(perMetricValues['aperture'], labels, 'Aperture','aperture'),
-        adviceObjective(perMetricValues['chiusure'], labels, 'Chiusure','chiusure'),
-        adviceObjective(perMetricValues['apertureWEFest'], labels, 'Aperture nel weekend/festivi','apertureWEFest'),
-        adviceObjective(perMetricValues['chiusureWEFest'], labels, 'Chiusure nel weekend/festivi','chiusureWEFest'),
-        adviceObjective(perMetricValues['_eventsN'], labels, 'Eventi "a casa"','events')
+        adviceObjective(perMetricValues["aperture"], labels, "Aperture"),
+        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure"),
+        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi"),
+        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
+        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
       ];
-      document.getElementById('notesBody').innerHTML = notes.map(function(n){
-        const parts = n.split(': ');
-        const title = parts.shift();
-        return '<tr><td><b>'+title+'</b></td><td>'+parts.join(': ')+'</td></tr>';
-      }).join('');
+      document.getElementById("notesBody").innerHTML = notes.map(n => {
+        const [title, ...rest] = n.split(": ");
         return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
       }).join("");
-    }
-
-    // --- PLANNING RENDER & FEEDBACK -------------------------------------------
-    function renderPlanning(homeCats){
-      const { days, key } = nextIsoWeekDates(new Date());
-      NEXT_WEEK_DATES = days; PLANNING_WEEK_KEY = key;
-      const planInfo = document.getElementById('planInfo');
-      const fmt = d=> d.toLocaleDateString('it-IT',{ weekday:'short', day:'2-digit', month:'2-digit'});
-      const rangeStr = `${fmt(days[0])} → ${fmt(days[6])} (ISO ${isoWeek(days[6])}/${isoWeekYear(days[6])})`;
-      planInfo.textContent = `Settimana pianificata: ${rangeStr}`;
-
-      // header
-      const thead = document.getElementById('planThead');
-      const thDays = days.map(d=>`<th>${DAY_NAMES[d.getDay()]} ${('0'+d.getDate()).slice(-2)}/${('0'+(d.getMonth()+1)).slice(-2)}</th>`).join('');
-      thead.innerHTML = `<tr><th class=\"plan-head\">Dipendente</th>${thDays}</tr>`;
-
-      const tbody = document.getElementById('planTbody');
-      const plan = getPlan();
-      const opts = ['', 'apertura','chiusura','104','rec','riposo','malattia','festivo'];
-      const optHtml = v => `<option value=\"${v}\">${v||'—'}</option>`;
-
-      tbody.innerHTML = DIP_COLS.map(name=>{
-        const rowCells = days.map(d=>{
-          const ymd = toYMD(d);
-          const cur = ((plan[name]||{})[ymd])||'';
-          return `<td><select class=\"slot-select\" data-name=\"${name}\" data-date=\"${ymd}\">${opts.map(optHtml).join('')}</select></td>`
-        }).join('');
-        return `<tr><td>${name}</td>${rowCells}</tr>`;
-      }).join('');
-
-      // set values + listeners
-      document.querySelectorAll('.slot-select').forEach(sel=>{
-        const name = sel.dataset.name; const date = sel.dataset.date;
-        const cur = ((plan[name]||{})[date])||''; sel.value = cur;
-        sel.addEventListener('change', ()=>{
-          const p = getPlan();
-          if(!p[name]) p[name] = {};
-          p[name][date] = sel.value;
-          savePlan(p);
-          updateFeedback(homeCats);
-        });
-      });
-
-      updateFeedback(homeCats);
-    }
-
-    function updateFeedback(homeCats){
-      const fb = document.getElementById('feedbackBox');
-      if(!fb) return;
-      const plan = getPlan();
-      // Increments per metrica
-      const zeroMap = () => Object.fromEntries(DIP_COLS.map(n=>[n,0]));
-      const inc = {
-        aperture: zeroMap(), chiusure: zeroMap(),
-        apertureWEFest: zeroMap(), chiusureWEFest: zeroMap(),
-        events: zeroMap()
-      };
-      const isWE = d => d.getDay()===0 || d.getDay()===6;
-      const holidaysMap = new Map();
-      const isHol = d => isHoliday(d, holidaysMap);
-      const isHomePlan = (val)=>{
-        const x = norm(val);
-        if(!x) return false;
-        if (x==='festivo') return true; // trattiamo "festivo" come a casa
-        for (const c of homeCats){ if (CAT_MATCH[c] && CAT_MATCH[c](x)) return true; }
-        return false;
-      };
-
-      // count slot-level increments for ap/ch + WE/Fest
-      for (const name of DIP_COLS){
-        for (const d of NEXT_WEEK_DATES){
-          const ymd = toYMD(d);
-          const val = ((plan[name]||{})[ymd])||'';
-          if (val==='apertura'){
-            inc.aperture[name]++;
-            if (isWE(d) || isHol(d)) inc.apertureWEFest[name]++;
-          } else if (val==='chiusura'){
-            inc.chiusure[name]++;
-            if (isWE(d) || isHol(d)) inc.chiusureWEFest[name]++;
-          }
-        }
-      }
-
-      // predict 1 evento a casa per la domenica della settimana pianificata
-      const fri = NEXT_WEEK_DATES[4], sat = NEXT_WEEK_DATES[5], sun = NEXT_WEEK_DATES[6], monAfter = addDays(sun,1);
-      const friHol = isHol(fri); const monHol = isHol(monAfter);
-      for (const name of DIP_COLS){
-        const planName = plan[name]||{};
-        const friHome = isHomePlan(planName[toYMD(fri)]);
-        const satHome = isHomePlan(planName[toYMD(sat)]);
-        const sunHome = isHomePlan(planName[toYMD(sun)]);
-        const monHome = !!planName[toYMD(NEXT_WEEK_DATES[0])] && isHomePlan(planName[toYMD(NEXT_WEEK_DATES[0])]);
-        const condA = friHome && satHome && sunHome;
-        const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun (stessa sett.)
-        const condC = sunHome && monHome;                        // Dom+Lun (stessa sett.)
-        const condD = sunHome && monHol;                         // Dom + lunedì successivo festivo (ufficiale)
-        const condE = friHol && satHome && sunHome;              // Ven festivo + Sab/ Dom a casa
-        const condF = satHome && sunHome && monHol;              // Sab+Dom a casa + lunedì successivo festivo
-        if (condA || condB || condC || condD || condE || condF){ inc.events[name] = 1; }
-      }
-
-      function sumFor(list, map){ return list.reduce((a,n)=>a+(map[n]||0),0); }
-      function verdictFor(key, label){
-        const adv = ADVICE[key]||{balanced:true};
-        if (adv.balanced) return `• <b>${label}</b>: già bilanciato`;
-        const incMap = inc[key];
-        const incUp = sumFor(adv.increase, incMap);
-        const incDown = sumFor(adv.decrease, incMap);
-        const ok = incUp > incDown;
-        const icon = ok ? '✅' : '⚠️';
-        const upStr = adv.increase.length ? `↑ ${adv.increase.join(', ')}` : '';
-        const downStr = adv.decrease.length ? `↓ ${adv.decrease.join(', ')}` : '';
-        return `${icon} <b>${label}</b>: ${ok? 'rispetta' : 'non rispetta'} (piano: ${incUp} a ${upStr || '—'} vs ${incDown} a ${downStr || '—'})`;
-      }
-
-      const lines = [
-        verdictFor('aperture','Aperture'),
-        verdictFor('chiusure','Chiusure'),
-        verdictFor('apertureWEFest','Aperture WE/Festivi'),
-        verdictFor('chiusureWEFest','Chiusure WE/Festivi'),
-        verdictFor('events','Eventi "a casa" (stima)')
-      ];
-      fb.innerHTML = lines.map(l=>`<div>${l}</div>`).join('');
-    }
-
-    // --- MAIN ------------------------------------------------------------------
-    (async function main(){
-      // Badges
-      const now = new Date();
-      document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
-      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`;
-
-      // Inizializza checkboxes da localStorage (o default)
-      const cats = loadCats();
-      setSelectedCats(cats);
-      syncLegend(cats);
-
-      // Fetch dati
-      const { pubId, gid } = getPubInfo(PUBHTML);
-      let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
-      try { RAW_ROWS = await fetchCSV(csvUrl); }
-      catch(e1){ csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`; RAW_ROWS = await fetchCSV(csvUrl); }
-
-      const headerKeys = RAW_ROWS.length ? Object.keys(RAW_ROWS[0]) : [];
-      COL_DATA = headerKeys.find(k => k.toLowerCase().includes("data"));
-      if (!COL_DATA) throw new Error("Colonna 'Data' non trovata.");
-      DIP_COLS = headerKeys.filter(k => /ilenia|cinzia|michela|vivien/i.test(k));
-
-      // Primo render
-      computeAndRender(cats);
-      renderPlanning(cats);
-
-      // Pulsante Aggiorna
-      document.getElementById('btnAggiorna').addEventListener('click', () => {
-        const selected = getSelectedCats();
-        saveCats(selected);
-        const now2 = new Date();
-        document.getElementById("updBadge").textContent = `Aggiornato: ${now2.toLocaleDateString('it-IT')} ${now2.toLocaleTimeString('it-IT')}`;
-        computeAndRender(selected);
-        updateFeedback(selected);
-      });
-
-      // Bottone verifica
-      document.getElementById('btnVerifica').addEventListener('click', ()=>{
-        const catsNow = getSelectedCats();
-        updateFeedback(catsNow);
-      });
-        saveCats(selected);
-        const now2 = new Date();
-        document.getElementById("updBadge").textContent = `Aggiornato: ${now2.toLocaleDateString('it-IT')} ${now2.toLocaleTimeString('it-IT')}`;
-        computeAndRender(selected);
-      });
 
     })().catch(err=>{
       console.error(err);
