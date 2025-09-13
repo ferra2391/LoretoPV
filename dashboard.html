@@ -596,14 +596,17 @@
 
       const labels = [...DIP_COLS];
       const notes = [
-        adviceObjective(perMetricValues["aperture"], labels, "Aperture","aperture"),
-        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure","chiusure"),
-        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi","apertureWEFest"),
-        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi","chiusureWEFest"),
-        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"','events')
+        adviceObjective(perMetricValues['aperture'], labels, 'Aperture','aperture'),
+        adviceObjective(perMetricValues['chiusure'], labels, 'Chiusure','chiusure'),
+        adviceObjective(perMetricValues['apertureWEFest'], labels, 'Aperture nel weekend/festivi','apertureWEFest'),
+        adviceObjective(perMetricValues['chiusureWEFest'], labels, 'Chiusure nel weekend/festivi','chiusureWEFest'),
+        adviceObjective(perMetricValues['_eventsN'], labels, 'Eventi "a casa"','events')
       ];
-      document.getElementById("notesBody").innerHTML = notes.map(n => {
-        const [title, ...rest] = n.split(": ");
+      document.getElementById('notesBody').innerHTML = notes.map(function(n){
+        const parts = n.split(': ');
+        const title = parts.shift();
+        return '<tr><td><b>'+title+'</b></td><td>'+parts.join(': ')+'</td></tr>';
+      }).join('');
         return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
       }).join("");
     }
