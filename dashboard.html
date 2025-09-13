@@ -300,7 +300,7 @@
       }
 
       // Helper “a casa”
-      const isHome = (val) => ["ferie","riposo","104","malattia","rec"].includes((val||"").toString().toLowerCase());
+      const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
