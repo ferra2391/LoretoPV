@@ -80,6 +80,9 @@
     .actions{ margin-left:auto; display:flex; gap:10px }
     .btn{ border:1px solid var(--border); background:#0b1220; color:#fff; padding:8px 12px; border-radius:10px; font-size:14px; cursor:pointer }
     .btn:active{ transform: translateY(1px) }
+      .plan-head{ font-weight:700 }
+    .slot-select{ width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:14px }
+    .plan-wrap table{ min-width:1100px }
   </style>
 </head>
 <body>
@@ -140,6 +143,24 @@
       </div>
     </section>
 
+    <!-- PIANIFICAZIONE SETTIMANA SUCCESSIVA -->
+    <section class="card" aria-label="Pianificazione settimana successiva">
+      <div class="card-header"><h2 class="card-title">Pianificazione settimana successiva</h2></div>
+      <div class="card-body">
+        <div id="planInfo" class="range">Settimana pianificata: —</div>
+        <div class="table-wrap plan-wrap" style="margin-top:8px; max-height:50vh;">
+          <table>
+            <thead id="planThead"></thead>
+            <tbody id="planTbody"></tbody>
+          </table>
+        </div>
+        <div class="actions" style="margin-top:10px; display:flex; gap:10px;">
+          <button class="btn" id="btnVerifica" aria-label="Verifica rispetto consigli">Verifica piano</button>
+        </div>
+        <div id="feedbackBox" class="range" style="margin-top:8px; font-size:14px;"></div>
+      </div>
+    </section>
+
     <!-- LEGENDA -->
     <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
@@ -189,6 +210,7 @@
     const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
 
     // --- UTILS ---------------------------------------------------------------
+    const DAY_NAMES = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
     function getPubInfo(pubhtml){
       const idm = pubhtml.match(/\/d\/e\/([^/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
@@ -300,6 +322,38 @@
     }
 
     // Stato globale dati grezzi
+    let ADVICE = {}; // target di aumento/diminuzione per metrica
+    let NEXT_WEEK_DATES = []; // array di 7 Date (Lun..Dom) della settimana successiva
+    let PLANNING_WEEK_KEY = null; // es. "2025-W38"
+
+    // Helpers ISO week
+    function isoWeekMonday(date){ // restituisce il lunedì della settimana ISO della data
+      const d = new Date(date);
+      const day = d.getDay() || 7; // 1..7 (lun..dom)
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - day + 1);
+      monday.setHours(0,0,0,0);
+      return monday;
+    }
+    function nextIsoWeekDates(fromDate){
+      const thisMon = isoWeekMonday(fromDate);
+      const nextMon = addDays(thisMon, 7);
+      const days = Array.from({length:7}, (_,i)=> addDays(nextMon, i));
+      const sun = days[6];
+      const key = `${isoWeekYear(sun)}-W${String(isoWeek(sun)).padStart(2,'0')}`;
+      return { days, key };
+    }
+
+    // Persistenza piano (per settimana pianificata)
+    function getPlan(){
+      try{
+        const raw = localStorage.getItem('plan_'+PLANNING_WEEK_KEY);
+        return raw ? JSON.parse(raw) : {};
+      }catch{return {} }
+    }
+    function savePlan(plan){
+      localStorage.setItem('plan_'+PLANNING_WEEK_KEY, JSON.stringify(plan));
+    }
     let RAW_ROWS = [];
     let DIP_COLS = [];
     let COL_DATA = null;
@@ -512,9 +566,23 @@
         if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
         return names.slice(0,-1).map(n=>`<b>${n}</b>`).join(", ") + ` e <b>${names.slice(-1)[0]}</b>`;
       }
-      function adviceObjective(values, labels, what){
+      function adviceObjective(values, labels, what, key){
         const st = assessBalanceShares(values);
-        if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
+        if (st.balanced){
+          ADVICE[key] = { balanced:true, increase:[], decrease:[] };
+          return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
+        }
+        const sum = values.reduce((a,b)=>a+b,0);
+        const shares = values.map(v => v/sum);
+        const max = Math.max(...shares), min = Math.min(...shares);
+        const maxGroup = labels.filter((_,i)=>shares[i]===max);
+        const minGroup = labels.filter((_,i)=>shares[i]===min);
+        const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
+        ADVICE[key] = { balanced:false, increase: minGroup, decrease: maxGroup };
+        return isHighOut
+          ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
+          : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
+      }: distribuzione bilanciata — nessuna azione specifica.`;
         const sum = values.reduce((a,b)=>a+b,0);
         const shares = values.map(v => v/sum);
         const max = Math.max(...shares), min = Math.min(...shares);
@@ -528,16 +596,139 @@
 
       const labels = [...DIP_COLS];
       const notes = [
-        adviceObjective(perMetricValues["aperture"], labels, "Aperture"),
-        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure"),
-        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi"),
-        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
-        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
+        adviceObjective(perMetricValues["aperture"], labels, "Aperture","aperture"),
+        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure","chiusure"),
+        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi","apertureWEFest"),
+        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi","chiusureWEFest"),
+        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"','events')
       ];
       document.getElementById("notesBody").innerHTML = notes.map(n => {
         const [title, ...rest] = n.split(": ");
         return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
       }).join("");
+    }
+
+    // --- PLANNING RENDER & FEEDBACK -------------------------------------------
+    function renderPlanning(homeCats){
+      const { days, key } = nextIsoWeekDates(new Date());
+      NEXT_WEEK_DATES = days; PLANNING_WEEK_KEY = key;
+      const planInfo = document.getElementById('planInfo');
+      const fmt = d=> d.toLocaleDateString('it-IT',{ weekday:'short', day:'2-digit', month:'2-digit'});
+      const rangeStr = `${fmt(days[0])} → ${fmt(days[6])} (ISO ${isoWeek(days[6])}/${isoWeekYear(days[6])})`;
+      planInfo.textContent = `Settimana pianificata: ${rangeStr}`;
+
+      // header
+      const thead = document.getElementById('planThead');
+      const thDays = days.map(d=>`<th>${DAY_NAMES[d.getDay()]} ${('0'+d.getDate()).slice(-2)}/${('0'+(d.getMonth()+1)).slice(-2)}</th>`).join('');
+      thead.innerHTML = `<tr><th class=\"plan-head\">Dipendente</th>${thDays}</tr>`;
+
+      const tbody = document.getElementById('planTbody');
+      const plan = getPlan();
+      const opts = ['', 'apertura','chiusura','104','rec','riposo','malattia','festivo'];
+      const optHtml = v => `<option value=\"${v}\">${v||'—'}</option>`;
+
+      tbody.innerHTML = DIP_COLS.map(name=>{
+        const rowCells = days.map(d=>{
+          const ymd = toYMD(d);
+          const cur = ((plan[name]||{})[ymd])||'';
+          return `<td><select class=\"slot-select\" data-name=\"${name}\" data-date=\"${ymd}\">${opts.map(optHtml).join('')}</select></td>`
+        }).join('');
+        return `<tr><td>${name}</td>${rowCells}</tr>`;
+      }).join('');
+
+      // set values + listeners
+      document.querySelectorAll('.slot-select').forEach(sel=>{
+        const name = sel.dataset.name; const date = sel.dataset.date;
+        const cur = ((plan[name]||{})[date])||''; sel.value = cur;
+        sel.addEventListener('change', ()=>{
+          const p = getPlan();
+          if(!p[name]) p[name] = {};
+          p[name][date] = sel.value;
+          savePlan(p);
+          updateFeedback(homeCats);
+        });
+      });
+
+      updateFeedback(homeCats);
+    }
+
+    function updateFeedback(homeCats){
+      const fb = document.getElementById('feedbackBox');
+      if(!fb) return;
+      const plan = getPlan();
+      // Increments per metrica
+      const zeroMap = () => Object.fromEntries(DIP_COLS.map(n=>[n,0]));
+      const inc = {
+        aperture: zeroMap(), chiusure: zeroMap(),
+        apertureWEFest: zeroMap(), chiusureWEFest: zeroMap(),
+        events: zeroMap()
+      };
+      const isWE = d => d.getDay()===0 || d.getDay()===6;
+      const holidaysMap = new Map();
+      const isHol = d => isHoliday(d, holidaysMap);
+      const isHomePlan = (val)=>{
+        const x = norm(val);
+        if(!x) return false;
+        if (x==='festivo') return true; // trattiamo "festivo" come a casa
+        for (const c of homeCats){ if (CAT_MATCH[c] && CAT_MATCH[c](x)) return true; }
+        return false;
+      };
+
+      // count slot-level increments for ap/ch + WE/Fest
+      for (const name of DIP_COLS){
+        for (const d of NEXT_WEEK_DATES){
+          const ymd = toYMD(d);
+          const val = ((plan[name]||{})[ymd])||'';
+          if (val==='apertura'){
+            inc.aperture[name]++;
+            if (isWE(d) || isHol(d)) inc.apertureWEFest[name]++;
+          } else if (val==='chiusura'){
+            inc.chiusure[name]++;
+            if (isWE(d) || isHol(d)) inc.chiusureWEFest[name]++;
+          }
+        }
+      }
+
+      // predict 1 evento a casa per la domenica della settimana pianificata
+      const fri = NEXT_WEEK_DATES[4], sat = NEXT_WEEK_DATES[5], sun = NEXT_WEEK_DATES[6], monAfter = addDays(sun,1);
+      const friHol = isHol(fri); const monHol = isHol(monAfter);
+      for (const name of DIP_COLS){
+        const planName = plan[name]||{};
+        const friHome = isHomePlan(planName[toYMD(fri)]);
+        const satHome = isHomePlan(planName[toYMD(sat)]);
+        const sunHome = isHomePlan(planName[toYMD(sun)]);
+        const monHome = !!planName[toYMD(NEXT_WEEK_DATES[0])] && isHomePlan(planName[toYMD(NEXT_WEEK_DATES[0])]);
+        const condA = friHome && satHome && sunHome;
+        const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun (stessa sett.)
+        const condC = sunHome && monHome;                        // Dom+Lun (stessa sett.)
+        const condD = sunHome && monHol;                         // Dom + lunedì successivo festivo (ufficiale)
+        const condE = friHol && satHome && sunHome;              // Ven festivo + Sab/ Dom a casa
+        const condF = satHome && sunHome && monHol;              // Sab+Dom a casa + lunedì successivo festivo
+        if (condA || condB || condC || condD || condE || condF){ inc.events[name] = 1; }
+      }
+
+      function sumFor(list, map){ return list.reduce((a,n)=>a+(map[n]||0),0); }
+      function verdictFor(key, label){
+        const adv = ADVICE[key]||{balanced:true};
+        if (adv.balanced) return `• <b>${label}</b>: già bilanciato`;
+        const incMap = inc[key];
+        const incUp = sumFor(adv.increase, incMap);
+        const incDown = sumFor(adv.decrease, incMap);
+        const ok = incUp > incDown;
+        const icon = ok ? '✅' : '⚠️';
+        const upStr = adv.increase.length ? `↑ ${adv.increase.join(', ')}` : '';
+        const downStr = adv.decrease.length ? `↓ ${adv.decrease.join(', ')}` : '';
+        return `${icon} <b>${label}</b>: ${ok? 'rispetta' : 'non rispetta'} (piano: ${incUp} a ${upStr || '—'} vs ${incDown} a ${downStr || '—'})`;
+      }
+
+      const lines = [
+        verdictFor('aperture','Aperture'),
+        verdictFor('chiusure','Chiusure'),
+        verdictFor('apertureWEFest','Aperture WE/Festivi'),
+        verdictFor('chiusureWEFest','Chiusure WE/Festivi'),
+        verdictFor('events','Eventi "a casa" (stima)')
+      ];
+      fb.innerHTML = lines.map(l=>`<div>${l}</div>`).join('');
     }
 
     // --- MAIN ------------------------------------------------------------------
@@ -565,10 +756,23 @@
 
       // Primo render
       computeAndRender(cats);
+      renderPlanning(cats);
 
       // Pulsante Aggiorna
       document.getElementById('btnAggiorna').addEventListener('click', () => {
         const selected = getSelectedCats();
+        saveCats(selected);
+        const now2 = new Date();
+        document.getElementById("updBadge").textContent = `Aggiornato: ${now2.toLocaleDateString('it-IT')} ${now2.toLocaleTimeString('it-IT')}`;
+        computeAndRender(selected);
+        updateFeedback(selected);
+      });
+
+      // Bottone verifica
+      document.getElementById('btnVerifica').addEventListener('click', ()=>{
+        const catsNow = getSelectedCats();
+        updateFeedback(catsNow);
+      });
         saveCats(selected);
         const now2 = new Date();
         document.getElementById("updBadge").textContent = `Aggiornato: ${now2.toLocaleDateString('it-IT')} ${now2.toLocaleTimeString('it-IT')}`;
