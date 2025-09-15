@@ -331,19 +331,20 @@
         const ymd = toYMD(dt);
         const dow = dt.getDay();
         const weekend = (dow===0 || dow===6);
-        const festivo = isHoliday(dt, holidaysMap);
+        // const festivo = isHoliday(dt, holidaysMap); // non usato: i festivi derivano dal foglio per dipendente
         if (!byDate.has(ymd)) byDate.set(ymd, {});
         const dayObj = byDate.get(ymd);
 
         for (const col of dipCols){
           const raw = (row[col] || "").toString().trim().toLowerCase();
           dayObj[col] = raw;
+          const festivoFromSheet = (raw === 'festivo');
 
           if (!raw) continue;
           if (raw === "apertura") {
-            stats[col].aperture++; if (weekend || festivo) stats[col].apertureWEFest++;
+            stats[col].aperture++; if (weekend || festivoFromSheet) stats[col].apertureWEFest++;
           } else if (raw === "chiusura") {
-            stats[col].chiusure++; if (weekend || festivo) stats[col].chiusureWEFest++;
+            stats[col].chiusure++; if (weekend || festivoFromSheet) stats[col].chiusureWEFest++;
           } else if (raw === "ferie") {
             stats[col].ferie++;
           } else if (raw === "riposo") {
@@ -414,29 +415,29 @@ function recomputeHistoricEvents(){
     const d = new Date(ymd);
     if (d.getDay() !== 0) continue; // solo domeniche
     const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
-    
     const wKey = isoWeekKey(sun);
 
     for (const col of dipCols){
-      const friHome = isHomeDynamic(get(toYMD(fri), col));
-      const satHome = isHomeDynamic(get(toYMD(sat), col));
-      const sunHome = isHomePlan(getPlanVal(emp, ySun));
+      const friVal = get(toYMD(fri), col);
+      const satVal = get(toYMD(sat), col);
+      const sunVal = get(toYMD(sun), col);
+      const monVal = get(toYMD(mon), col);
 
-          // "FESTIVO" per weekend lunghi letto dal planner (valore pianificato), non da calendario
-          const friFestivo = (getPlanVal(emp, yFri) || "").toString().toLowerCase() === 'festivo';
-          const monFestivo = (getPlanVal(emp, yMon) || "").toString().toLowerCase() === 'festivo';
-      const monHome = isHomeDynamic(getCell(toYMD(mon), col));
+      const friHome = isHomeDynamic(friVal);
+      const satHome = isHomeDynamic(satVal);
+      const sunHome = isHomeDynamic(sunVal);
+      const monHome = isHomeDynamic(monVal);
 
-          // "FESTIVO" per weekend lunghi letto dal foglio (per dipendente), non da calendario
-          const friFestivo = (getCell(toYMD(fri), col) || "").toString().toLowerCase() === 'festivo';
-          const monFestivo = (getCell(toYMD(mon), col) || "").toString().toLowerCase() === 'festivo';
+      // "FESTIVO" per weekend lunghi letto dal foglio (per dipendente), non da calendario
+      const friFestivo = (friVal || "").toString().toLowerCase() === 'festivo';
+      const monFestivo = (monVal || "").toString().toLowerCase() === 'festivo';
 
-      const condA = friHome && satHome && sunHome;
-      const condB = satHome && sunHome && monHome;
-      const condC = sunHome && monHome;
-      const condD = sunHome && monFestivo;
-      const condE = friFestivo && satHome && sunHome;
-      const condF = satHome && sunHome && monFestivo;
+      const condA = friHome && satHome && sunHome;             // Ven+Sab+Dom a casa
+      const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun a casa
+      const condC = sunHome && monHome;                        // Dom+Lun a casa
+      const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO (da foglio)
+      const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO (da foglio) + Sab a casa + Dom a casa
+      const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO (da foglio)
 
       if (condA || condB || condC || condD || condE || condF){
         stats[col].eventsWeeksAll.add(wKey);
@@ -670,15 +671,16 @@ buildRowsAndMetrics();
           const d = days7[i]; const ymd = daysYMD[i];
           const dow = d.getDay();
           const weekend = (dow===0 || dow===6);
-          const festivo = isHoliday(d, holidaysMap);
+          // const festivo = isHoliday(d, holidaysMap); // per conteggi WE/Festivi del planner usiamo solo il valore selezionato 'FESTIVO' nel planner
 
           for (const emp of dipendenti){
             const v = (saved[emp] && saved[emp][ymd]) || "";
             if (!v) continue;
+            const festivoFromPlan = (v === 'festivo');
             if (v === 'apertura'){
-              pStats[emp].aperture++; if (weekend || festivo) pStats[emp].apertureWEFest++;
+              pStats[emp].aperture++; if (weekend || festivoFromPlan) pStats[emp].apertureWEFest++;
             } else if (v === 'chiusura'){
-              pStats[emp].chiusure++; if (weekend || festivo) pStats[emp].chiusureWEFest++;
+              pStats[emp].chiusure++; if (weekend || festivoFromPlan) pStats[emp].chiusureWEFest++;
             } else if (v === 'ferie'){
               pStats[emp].ferie++;
             } else if (v === 'riposo'){
@@ -693,8 +695,7 @@ buildRowsAndMetrics();
           }
         }
 
-        // Eventi lunghi (parziale, perché manca il lunedì successivo):
-        // valutiamo condA (Ven+Sab+Dom a casa) e condD/E/F che dipendono solo dal festivo
+        // Eventi lunghi (Ven/Sab/Dom della settimana pianificata + Lunedì successivo per regole che lo prevedono)
         const sun = days7[6];
         const sat = days7[5];
         const fri = days7[4];
@@ -705,15 +706,27 @@ buildRowsAndMetrics();
         const getPlanVal = (emp, ymd) => (saved[emp] && saved[emp][ymd]) || "";
 
         for (const emp of dipendenti){
-          const friHome = isHomePlan(getPlanVal(emp, yFri));
-          const satHome = isHomePlan(getPlanVal(emp, ySat));
-          const sunHome = isHomePlan(getPlanVal(emp, ySun));
+          const friVal = getPlanVal(emp, yFri);
+          const satVal = getPlanVal(emp, ySat);
+          const sunVal = getPlanVal(emp, ySun);
+          const monVal = getPlanVal(emp, yMon);
 
-          const condA = friHome && satHome && sunHome;
-          const condD = sunHome && monFestivo;
-          const condE = friFestivo && satHome && sunHome;
-          const condF = satHome && sunHome && monFestivo;
-          if (condA || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
+          const friHome = isHomePlan(friVal);
+          const satHome = isHomePlan(satVal);
+          const sunHome = isHomePlan(sunVal);
+          const monHome = isHomePlan(monVal);
+
+          const friFestivo = (friVal || '').toLowerCase() === 'festivo';
+          const monFestivo = (monVal || '').toLowerCase() === 'festivo';
+
+          const condA = friHome && satHome && sunHome;             // Ven+Sab+Dom a casa
+          const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun a casa
+          const condC = sunHome && monHome;                        // Dom+Lun a casa
+          const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO (planner)
+          const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO (planner) + Sab a casa + Dom a casa
+          const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO (planner)
+
+          if (condA || condB || condC || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
         }
 
         return pStats;
@@ -770,7 +783,7 @@ buildRowsAndMetrics();
             const idxMinH = shrH.indexOf(Math.min(...shrH));
             const movedDown = shrP[idxMaxH] <= shrH[idxMaxH] + 1e-6;
             const movedUp = shrP[idxMinH] >= shrH[idxMinH] - 1e-6;
-            const dirMsg = `${movedDown? '↓' : '→'} ${labels[idxMaxH]} • ${movedUp? '↑' : '→'} ${labels[idxMinH]}`;
+            const dirMsg = `${movedDown? '↓' : '→'} ${dipendenti[idxMaxH]} • ${movedUp? '↑' : '→'} ${dipendenti[idxMinH]}`;
             verdict = `Spread ${ (stH.spread*100).toFixed(1) }pp → ${ (stP.spread*100).toFixed(1) }pp. ${dirMsg}`;
           } else if (stP.spread > stH.spread + 1e-6){
             icon = '❌'; worsened++;
