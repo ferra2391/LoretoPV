@@ -16,7 +16,6 @@
     header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
     .wrap{ max-width: 1680px; margin:0 auto; padding:18px 20px; }
 
-
     /* HEADER centrato */
     header .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
     h1{ margin:0; font-size:22px; color:var(--head); }
@@ -73,6 +72,19 @@
     .notes table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px; min-width: 680px; }
     .notes th,.notes td{ padding:10px 8px; border-bottom:1px solid var(--border) }
     .notes thead th{ background:#fff; position:sticky; top:0; z-index:1 }
+
+    /* PLANNER */
+    .planner table{ width:100%; border-collapse:separate; border-spacing:0; font-size:15px; min-width: 980px; }
+    .planner th,.planner td{ padding:10px 8px; border-bottom:1px solid var(--border); }
+    .planner thead th{ position:sticky; top:0; z-index:2; background:#fff }
+    .planner select{ width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:14px }
+    .planner tfoot td{ background:#fafafa }
+
+    .pill{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; font-size:12px; background:#fff }
+    .pill.ok{ border-color:#16a34a }
+    .pill.warn{ border-color:#d97706 }
+    .pill.bad{ border-color:#dc2626 }
+    .muted{ color:var(--muted) }
   </style>
 </head>
 <body>
@@ -121,7 +133,7 @@
       <div class="card-body legend">
         <h3>Weekend Lunghi</h3>
         <ul>
-          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</li>
+          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code><span class="muted"> (nella simulazione valgono anche <code>REC</code> e <code>FESTIVO</code> come "a casa").</span></li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
@@ -157,6 +169,43 @@
         </div>
       </div>
     </section>
+
+    <!-- PLANNER: pianificazione settimana successiva + valutazione -->
+    <section class="card planner" aria-label="Pianifica orari settimana prossima">
+      <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+        <h2 class="card-title">Pianifica orari – settimana prossima</h2>
+        <div class="badges" style="margin:0">
+          <div class="badge" id="plannerRange">Settimana: —</div>
+          <button id="btnEval" class="badge" style="cursor:pointer">Valuta pianificazione</button>
+          <button id="btnReset" class="badge" style="cursor:pointer">Reset</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap" style="max-height:none">
+          <table>
+            <thead id="plannerHead"></thead>
+            <tbody id="plannerBody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:16px; align-items:center; flex-wrap:wrap">
+          <div class="pill" id="plannerStatus">Pronto alla valutazione</div>
+          <div class="muted">Nella simulazione <b>REC</b> e <b>FESTIVO</b> contano come “a casa”.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Valutazione congruità pianificazione">
+      <div class="card-header"><h2 class="card-title">Valutazione congruità rispetto alle note</h2></div>
+      <div class="card-body">
+        <div class="table-wrap" style="max-height:50vh;">
+          <table>
+            <thead><tr><th>Voce</th><th>Esito</th><th>Dettaglio</th></tr></thead>
+            <tbody id="planFeedback"></tbody>
+          </table>
+        </div>
+        <div class="range" id="planSummary" style="margin-top:8px;">—</div>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -186,8 +235,16 @@
       if (!m) return new Date(dstr);
       return new Date(+m[3], +m[2]-1, +m[1]);
     }
-    function toYMD(d){ return d.toISOString().slice(0,10); }
+    function toYMD(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10); }
     function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+    function startOfISOWeek(date){
+      const d = new Date(date);
+      const day = d.getDay(); // 0=dom ... 6=sab
+      const diff = (day === 0 ? -6 : 1) - day; // porta a lunedì
+      const res = new Date(d);
+      res.setDate(d.getDate() + diff);
+      return new Date(res.getFullYear(), res.getMonth(), res.getDate());
+    }
 
     // ISO week + year
     function isoWeek(date){
@@ -299,13 +356,13 @@
         rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
-      // Helper “a casa”
+      // Helper “a casa” (storico)
       const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
       const allDates = Array.from(byDate.keys()).sort();
       const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Eventi “a casa” — combinazioni richieste
+      // Eventi “a casa” — combinazioni richieste (storico)
       for (const ymd of allDates){
         const d = new Date(ymd);
         if (d.getDay() !== 0) continue; // solo domeniche
@@ -368,7 +425,7 @@
       // Valutazione bilanciamento (soglia 5pp) e outlier (più lontano da 1/N)
       function assessBalanceShares(values){
         const sum = values.reduce((a,b)=>a+b,0);
-        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0) };
+        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0), spread:0, maxShare:0, minShare:0 };
         const shares = values.map(v => v / sum);
         const maxShare = Math.max(...shares);
         const minShare = Math.min(...shares);
@@ -400,7 +457,7 @@
         }
       }
 
-      // Render tabella
+      // Render tabella principale
       const tbody = document.getElementById("riepilogo");
       tbody.innerHTML = rowsRender.map((r, rowIdx) => {
         function cell(key, extraCls="", isNum=true){
@@ -430,7 +487,7 @@
         </tr>`;
       }).join("");
 
-      // NOTE per prossima settimana — “aumentare a / diminuire a” con nomi in grassetto e gruppi pari-min/max
+      // NOTE per prossima settimana — “aumentare a / diminuire a”
       function humanListBold(names){
         if (names.length === 1) return `<b>${names[0]}</b>`;
         if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
@@ -440,16 +497,14 @@
         const st = assessBalanceShares(values);
         if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
         const sum = values.reduce((a,b)=>a+b,0);
-        const shares = values.map(v => v/sum);
+        const shares = sum>0 ? values.map(v => v/sum) : values.map(_=>0);
         const max = Math.max(...shares), min = Math.min(...shares);
         const maxGroup = labels.filter((_,i)=>shares[i]===max);
         const minGroup = labels.filter((_,i)=>shares[i]===min);
-
         const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
-return isHighOut
-  ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
-  : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
-
+        return isHighOut
+          ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
+          : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
       }
 
       const labels = dipendenti;
@@ -465,6 +520,222 @@ return isHighOut
         return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
       }).join("");
 
+      /* =========================
+         PLANNER SETTIMANA PROSSIMA
+         ========================= */
+      const plannerHead = document.getElementById('plannerHead');
+      const plannerBody = document.getElementById('plannerBody');
+      const plannerRange = document.getElementById('plannerRange');
+      const plannerStatus = document.getElementById('plannerStatus');
+      const btnEval = document.getElementById('btnEval');
+      const btnReset = document.getElementById('btnReset');
+
+      // calcola la settimana ISO successiva rispetto all'ultima data del dataset
+      const baseMonday = startOfISOWeek(maxDate || new Date());
+      const nextMonday = addDays(baseMonday, 7);
+      const days7 = Array.from({length:7}, (_,i)=> addDays(nextMonday, i));
+      const daysYMD = days7.map(d => toYMD(d));
+      const fmt = new Intl.DateTimeFormat('it-IT', { weekday:'short', day:'2-digit', month:'2-digit' });
+      plannerRange.textContent = `Settimana: ${fmt.format(days7[0])} → ${fmt.format(days7[6])}`;
+
+      // Header planner
+      plannerHead.innerHTML = `<tr>
+        <th>Dipendente</th>
+        ${days7.map(d=>`<th>${fmt.format(d)}</th>`).join("")}
+      </tr>`;
+
+      // Options evento
+      const OPTIONS = ["", "apertura", "chiusura", "rec", "riposo", "104", "festivo", "malattia"];
+
+      // LocalStorage helpers
+      const LS_KEY = `planner-${daysYMD[0]}-${daysYMD[6]}`;
+      function loadPlan(){
+        try{ return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }catch{ return {}; }
+      }
+      function savePlan(plan){ localStorage.setItem(LS_KEY, JSON.stringify(plan)); }
+
+      // Render righe planner
+      const saved = loadPlan();
+      function renderPlanner(){
+        plannerBody.innerHTML = dipendenti.map((dName, rIdx)=>{
+          const row = [`<td>${dName}</td>`];
+          for (let c=0;c<7;c++){
+            const ymd = daysYMD[c];
+            const cur = (saved[dName] && saved[dName][ymd]) || "";
+            const sel = `<select data-emp="${dName}" data-ymd="${ymd}">` + OPTIONS.map(opt=>{
+              const label = opt ? opt.toUpperCase() : "—";
+              const val = opt;
+              const chosen = (cur===val) ? ' selected' : '';
+              return `<option value="${val}"${chosen}>${label}</option>`;
+            }).join("") + `</select>`;
+            row.push(`<td>${sel}</td>`);
+          }
+          return `<tr>${row.join("")}</tr>`;
+        }).join("");
+
+        plannerBody.querySelectorAll('select').forEach(sel =>{
+          sel.addEventListener('change', (e)=>{
+            const emp = sel.dataset.emp; const ymd = sel.dataset.ymd; const val = sel.value;
+            if(!saved[emp]) saved[emp] = {};
+            saved[emp][ymd] = val;
+            savePlan(saved);
+          });
+        });
+      }
+      renderPlanner();
+
+      btnReset.addEventListener('click', ()=>{
+        localStorage.removeItem(LS_KEY);
+        for(const k in saved) delete saved[k];
+        renderPlanner();
+        plannerStatus.textContent = 'Pianificazione azzerata';
+        plannerStatus.className = 'pill warn';
+        document.getElementById('planFeedback').innerHTML = '';
+        document.getElementById('planSummary').textContent = '—';
+      });
+
+      // Valuta pianificazione
+      function computePlanStats(){
+        // struttura come stats storico
+        const pStats = {};
+        dipendenti.forEach(d => pStats[d] = {
+          aperture:0, chiusure:0,
+          apertureWEFest:0, chiusureWEFest:0,
+          ferie:0, riposo:0, "104":0, malattia:0,
+          eventsWeeksAll: new Set()
+        });
+
+        const isHomePlan = (v) => ["ferie","riposo","104","malattia","rec","festivo"].includes((v||"").toLowerCase());
+
+        // per calcolo WE/Festivi e long-weekend
+        for (let i=0;i<7;i++){
+          const d = days7[i]; const ymd = daysYMD[i];
+          const dow = d.getDay();
+          const weekend = (dow===0 || dow===6);
+          const festivo = isHoliday(d, holidaysMap);
+
+          for (const emp of dipendenti){
+            const v = (saved[emp] && saved[emp][ymd]) || "";
+            if (!v) continue;
+            if (v === 'apertura'){
+              pStats[emp].aperture++; if (weekend || festivo) pStats[emp].apertureWEFest++;
+            } else if (v === 'chiusura'){
+              pStats[emp].chiusure++; if (weekend || festivo) pStats[emp].chiusureWEFest++;
+            } else if (v === 'ferie'){
+              pStats[emp].ferie++;
+            } else if (v === 'riposo'){
+              pStats[emp].riposo++;
+            } else if (v === '104'){
+              pStats[emp]["104"]++;
+            } else if (v === 'malattia'){
+              pStats[emp].malattia++;
+            } else if (v === 'rec' || v === 'festivo'){
+              // contano come "a casa" solo per eventi lunghi
+            }
+          }
+        }
+
+        // Eventi lunghi (parziale, perché manca il lunedì successivo):
+        // valutiamo condA (Ven+Sab+Dom a casa) e condD/E/F che dipendono solo dal festivo
+        const sun = days7[6];
+        const sat = days7[5];
+        const fri = days7[4];
+        const nextMon = addDays(sun, 1);
+        const friHoliday = isHoliday(fri, holidaysMap);
+        const monHoliday = isHoliday(nextMon, holidaysMap);
+        const yFri = toYMD(fri), ySat = toYMD(sat), ySun = toYMD(sun);
+        const wKey = `${isoWeekYear(sun)}-W${String(isoWeek(sun)).padStart(2,'0')}`;
+
+        const getPlanVal = (emp, ymd) => (saved[emp] && saved[emp][ymd]) || "";
+
+        for (const emp of dipendenti){
+          const friHome = isHomePlan(getPlanVal(emp, yFri));
+          const satHome = isHomePlan(getPlanVal(emp, ySat));
+          const sunHome = isHomePlan(getPlanVal(emp, ySun));
+
+          const condA = friHome && satHome && sunHome;
+          const condD = sunHome && monHoliday;
+          const condE = friHoliday && satHome && sunHome;
+          const condF = satHome && sunHome && monHoliday;
+          if (condA || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
+        }
+
+        return pStats;
+      }
+
+      function shares(values){ const s = values.reduce((a,b)=>a+b,0); return s>0 ? values.map(v=>v/s) : values.map(_=>0); }
+
+      function evaluatePlan(){
+        const pStats = computePlanStats();
+        const feedbackBody = document.getElementById('planFeedback');
+        const summary = document.getElementById('planSummary');
+
+        const METRICS = [
+          { key:'aperture', label:'Aperture' },
+          { key:'chiusure', label:'Chiusure' },
+          { key:'apertureWEFest', label:'Aperture nel weekend/festivi' },
+          { key:'chiusureWEFest', label:'Chiusure nel weekend/festivi' },
+          { key:'_eventsN', label:'Eventi "a casa"' }
+        ];
+
+        const hist = {}; const plan = {};
+        for (const m of METRICS){
+          if (m.key === '_eventsN'){
+            hist[m.key] = perMetricValues['_eventsN'];
+            plan[m.key] = dipendenti.map(d => (pStats[d].eventsWeeksAll.size || 0));
+          } else {
+            hist[m.key] = dipendenti.map(d => (stats[d][m.key] || 0));
+            plan[m.key] = dipendenti.map(d => (pStats[d][m.key] || 0));
+          }
+        }
+
+        let improved = 0, worsened = 0, neutral = 0;
+        const rows = [];
+
+        for (const m of METRICS){
+          const h = hist[m.key];
+          const p = plan[m.key];
+          const stH = assessBalanceShares(h);
+          const stP = assessBalanceShares(p);
+
+          const shrH = shares(h);
+          const shrP = shares(p);
+          const spreadDelta = (stH.spread || 0) - (stP.spread || 0);
+
+          let icon = '⚠️'; let verdict = 'Nessun cambiamento percepibile';
+          if ((p.reduce((a,b)=>a+b,0)) === 0){
+            icon = 'ℹ️'; verdict = 'Nessun evento pianificato per questa voce'; neutral++; rows.push({label:m.label, icon, verdict}); continue;
+          }
+
+          if (stP.spread < stH.spread - 1e-6){
+            icon = '✅'; improved++;
+            // Direzione: chi era alto scende? chi era basso sale?
+            const idxMaxH = shrH.indexOf(Math.max(...shrH));
+            const idxMinH = shrH.indexOf(Math.min(...shrH));
+            const movedDown = shrP[idxMaxH] <= shrH[idxMaxH] + 1e-6;
+            const movedUp = shrP[idxMinH] >= shrH[idxMinH] - 1e-6;
+            const dirMsg = `${movedDown? '↓' : '→'} ${labels[idxMaxH]} • ${movedUp? '↑' : '→'} ${labels[idxMinH]}`;
+            verdict = `Spread ${ (stH.spread*100).toFixed(1) }pp → ${ (stP.spread*100).toFixed(1) }pp. ${dirMsg}`;
+          } else if (stP.spread > stH.spread + 1e-6){
+            icon = '❌'; worsened++;
+            verdict = `Spread aumentato: ${ (stH.spread*100).toFixed(1) }pp → ${ (stP.spread*100).toFixed(1) }pp`;
+          } else {
+            neutral++;
+            verdict = `Spread invariato: ${ (stH.spread*100).toFixed(1) }pp`;
+          }
+
+          rows.push({ label:m.label, icon, verdict });
+        }
+
+        feedbackBody.innerHTML = rows.map(r => `<tr><td><b>${r.label}</b></td><td style="width:80px">${r.icon}</td><td>${r.verdict}</td></tr>`).join('');
+        const total = improved + worsened + neutral;
+        const pillClass = worsened===0 && improved>0 ? 'pill ok' : (worsened>0 ? 'pill bad' : 'pill warn');
+        plannerStatus.className = pillClass;
+        plannerStatus.textContent = worsened===0 && improved>0 ? 'Congruità buona' : (worsened>0 ? 'Congruità da rivedere' : 'Congruità neutra');
+        summary.textContent = `Miglioramenti: ${improved}/${total} • Peggioramenti: ${worsened}/${total} • Neutre: ${neutral}/${total}`;
+      }
+
+      btnEval.addEventListener('click', evaluatePlan);
     })().catch(err=>{
       console.error(err);
       alert("Errore: " + err.message +
