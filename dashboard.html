@@ -85,6 +85,9 @@
     .pill.warn{ border-color:#d97706 }
     .pill.bad{ border-color:#dc2626 }
     .muted{ color:var(--muted) }
+      /* Selettore "a casa" */
+    .home-chooser{ display:flex; flex-wrap:wrap; gap:10px; margin:10px 0 6px }
+    .home-chooser label{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-size:12px; cursor:pointer }
   </style>
 </head>
 <body>
@@ -133,7 +136,11 @@
       <div class="card-body legend">
         <h3>Weekend Lunghi</h3>
         <ul>
-          <li><b>Conta come “a casa”:</b> <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code><span class="muted"> (nella simulazione valgono anche <code>REC</code> e <code>FESTIVO</code> come "a casa").</span></li>
+          <li>
+  <div class="muted">Seleziona quali eventi contano come <b>“a casa”</b> (storico + simulazione):</div>
+  <div class="home-chooser" id="homeChooser"></div>
+  <div class="muted">Default consigliato: <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</div>
+</li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
             <ul>
@@ -189,7 +196,7 @@
         </div>
         <div style="margin-top:10px; display:flex; gap:16px; align-items:center; flex-wrap:wrap">
           <div class="pill" id="plannerStatus">Pronto alla valutazione</div>
-          <div class="muted">Nella simulazione <b>REC</b> e <b>FESTIVO</b> contano come “a casa”.</div>
+          <div class="muted">Nella simulazione contano gli eventi selezionati come “a casa” nella legenda.</div>
         </div>
       </div>
     </section>
@@ -356,171 +363,214 @@
         rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
-      // Helper “a casa” (storico)
-      const isHome = (val) => ["ferie","riposo","104","malattia"].includes((val||"").toString().toLowerCase());
-      const allDates = Array.from(byDate.keys()).sort();
-      const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
-      function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
+      // Helper “a casa” (storico) — DINAMICO CON SCELTA MULTIPLA
+const allDates = Array.from(byDate.keys()).sort();
+const get = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
+function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Eventi “a casa” — combinazioni richieste (storico)
-      for (const ymd of allDates){
-        const d = new Date(ymd);
-        if (d.getDay() !== 0) continue; // solo domeniche
-        const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
-        const friHoliday = isHoliday(fri, holidaysMap);
-        const monHoliday = isHoliday(mon, holidaysMap);
-        const wKey = isoWeekKey(sun);
+// Selettore dinamico per eventi "a casa"
+const HOME_LS_KEY = 'home-events-v1';
+const HOME_ALL = ["ferie","riposo","rec","104","malattia","festivo"];
+const HOME_DEFAULT = ["ferie","riposo","104","malattia"];
+let homeSet = new Set(loadHomeArray());
 
-        for (const col of dipCols){
-          const friHome = isHome(get(toYMD(fri), col));
-          const satHome = isHome(get(toYMD(sat), col));
-          const sunHome = isHome(get(toYMD(sun), col));
-          const monHome = isHome(get(toYMD(mon), col));
+function loadHomeArray(){
+  try{
+    const j = JSON.parse(localStorage.getItem(HOME_LS_KEY)||'null');
+    const arr = Array.isArray(j)? j.map(v=>String(v).toLowerCase()) : HOME_DEFAULT;
+    return Array.from(new Set(arr.filter(v=>HOME_ALL.includes(v))));
+  }catch{ return HOME_DEFAULT; }
+}
+function saveHome(){ localStorage.setItem(HOME_LS_KEY, JSON.stringify(Array.from(homeSet))); }
+function isHomeDynamic(val){ return homeSet.has((val||"").toString().toLowerCase()); }
 
-          const condA = friHome && satHome && sunHome;             // Ven+Sab+Dom a casa
-          const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun a casa
-          const condC = sunHome && monHome;                        // Dom+Lun a casa
-          const condD = sunHome && monHoliday;                     // Dom a casa + Lun festivo
-          const condE = friHoliday && satHome && sunHome;          // Ven festivo + Sab a casa + Dom a casa
-          const condF = satHome && sunHome && monHoliday;          // Sab+Dom a casa + Lun festivo
+function renderHomeChooser(){
+  const host = document.getElementById('homeChooser');
+  if (!host) return;
+  host.innerHTML = HOME_ALL.map(k=>{
+    const id = `home-${k}`;
+    const label = k.toUpperCase();
+    const checked = homeSet.has(k) ? ' checked' : '';
+    return `<label for="${id}"><input type="checkbox" id="${id}" value="${k}"${checked}/> ${label}</label>`;
+  }).join('');
+  host.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+    chk.addEventListener('change', ()=>{
+      const val = chk.value.toLowerCase();
+      if (chk.checked) homeSet.add(val); else homeSet.delete(val);
+      if (homeSet.size===0){ homeSet = new Set(HOME_DEFAULT); renderHomeChooser(); }
+      saveHome();
+      recomputeHistoricEvents();
+      buildRowsAndMetrics();
+      try{ evaluatePlan(); }catch(_){ }
+    });
+  });
+}
 
-          if (condA || condB || condC || condD || condE || condF){
-            stats[col].eventsWeeksAll.add(wKey);
-          }
-        }
+// Calcolo eventi storici in base alla scelta "a casa"
+function recomputeHistoricEvents(){
+  for (const col of dipCols){ stats[col].eventsWeeksAll = new Set(); }
+  for (const ymd of allDates){
+    const d = new Date(ymd);
+    if (d.getDay() !== 0) continue; // solo domeniche
+    const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
+    const friHoliday = isHoliday(fri, holidaysMap);
+    const monHoliday = isHoliday(mon, holidaysMap);
+    const wKey = isoWeekKey(sun);
+
+    for (const col of dipCols){
+      const friHome = isHomeDynamic(get(toYMD(fri), col));
+      const satHome = isHomeDynamic(get(toYMD(sat), col));
+      const sunHome = isHomeDynamic(get(toYMD(sun), col));
+      const monHome = isHomeDynamic(get(toYMD(mon), col));
+
+      const condA = friHome && satHome && sunHome;
+      const condB = satHome && sunHome && monHome;
+      const condC = sunHome && monHome;
+      const condD = sunHome && monHoliday;
+      const condE = friHoliday && satHome && sunHome;
+      const condF = satHome && sunHome && monHoliday;
+
+      if (condA || condB || condC || condD || condE || condF){
+        stats[col].eventsWeeksAll.add(wKey);
       }
+    }
+  }
+}
 
-      // % eventi a casa rispetto alla settimana ISO odierna (anno ISO corrente)
-      const today = new Date();
-      const curW = isoWeek(today), curY = isoWeekYear(today);
+// % eventi a casa rispetto alla settimana ISO odierna (anno ISO corrente)
+const today = new Date();
+const curW = isoWeek(today), curY = isoWeekYear(today);
 
-      // Righe per tabella
-      const rowsRender = dipendenti.map(d => {
-        const s = stats[d];
-        const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
-          .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
-          .filter(o => o.y === curY && o.w <= curW)
-          .sort((a,b)=>a.w-b.w);
+// Dom refs + utilities per main table/notes
+const tbody = document.getElementById("riepilogo");
+const notesBody = document.getElementById("notesBody");
 
-        const nEvents = weeksThisYearUpToNow.length;
-        const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
-        return {
-          dip:d,
-          aperture:s.aperture,
-          chiusure:s.chiusure,
-          apertureWEFest:s.apertureWEFest,
-          chiusureWEFest:s.chiusureWEFest,
-          ferie:s.ferie, riposo:s.riposo, "104":s["104"], malattia:s.malattia,
-          _eventsN:nEvents, _eventsPct:perc, _weeksList: weeksThisYearUpToNow.map(o=>o.w).join(", ") || "—"
-        };
-      });
+const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
+const headerIdByKey = {
+  aperture:"th-ap", chiusure:"th-ch", apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
+  ferie:"th-fe", riposo:"th-ri", "104":"th-104", malattia:"th-ma", _eventsN:"th-evn"
+};
 
-      // Colonne valutate con bollini (incluso Eventi a casa n), NO bollini su riposo/104/malattia
-      const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
-      const headerIdByKey = {
-        aperture:"th-ap", chiusure:"th-ch", apertureWEFest:"th-apwe", chiusureWEFest:"th-chwe",
-        ferie:"th-fe", riposo:"th-ri", "104":"th-104", malattia:"th-ma", _eventsN:"th-evn"
-      };
+function assessBalanceShares(values){
+  const sum = values.reduce((a,b)=>a+b,0);
+  if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0), spread:0, maxShare:0, minShare:0 };
+  const shares = values.map(v => v / sum);
+  const maxShare = Math.max(...shares);
+  const minShare = Math.min(...shares);
+  const spread = maxShare - minShare;
+  const balanced = spread <= 0.05;
+  let outIndex = null;
+  if (!balanced){
+    const mean = 1 / shares.length;
+    const idxMax = shares.indexOf(maxShare);
+    const idxMin = shares.indexOf(minShare);
+    outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
+  }
+  return { balanced, outIndex, shares, spread, maxShare, minShare };
+}
 
-      // Valutazione bilanciamento (soglia 5pp) e outlier (più lontano da 1/N)
-      function assessBalanceShares(values){
-        const sum = values.reduce((a,b)=>a+b,0);
-        if (sum <= 0) return { balanced:true, outIndex:null, shares:values.map(_=>0), spread:0, maxShare:0, minShare:0 };
-        const shares = values.map(v => v / sum);
-        const maxShare = Math.max(...shares);
-        const minShare = Math.min(...shares);
-        const spread = maxShare - minShare;
-        const balanced = spread <= 0.05;   // 5 punti percentuali
-        let outIndex = null;
-        if (!balanced){
-          const mean = 1 / shares.length;
-          const idxMax = shares.indexOf(maxShare);
-          const idxMin = shares.indexOf(minShare);
-          outIndex = (maxShare - mean) >= (mean - minShare) ? idxMax : idxMin;
-        }
-        return { balanced, outIndex, shares, spread, maxShare, minShare };
-      }
+function humanListBold(names){
+  if (names.length === 1) return `<b>${names[0]}</b>`;
+  if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
+  return names.slice(0,-1).map(n=>`<b>${n}</b>`).join(", ") + ` e <b>${names.slice(-1)[0]}</b>`;
+}
+function adviceObjective(values, labels, what){
+  const st = assessBalanceShares(values);
+  if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
+  const sum = values.reduce((a,b)=>a+b,0);
+  const shares = sum>0 ? values.map(v => v/sum) : values.map(_=>0);
+  const max = Math.max(...shares), min = Math.min(...shares);
+  const maxGroup = labels.filter((_,i)=>shares[i]===max);
+  const minGroup = labels.filter((_,i)=>shares[i]===min);
+  const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
+  return isHighOut
+    ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
+    : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
+}
 
-      // Prepara valori per metrica
-      const perMetricValues = {};
-      Object.keys(headerIdByKey).forEach(k => perMetricValues[k] = rowsRender.map(r => r[k]));
+let rowsRender, perMetricValues, columnStatus;
+function buildRowsAndMetrics(){
+  // rows
+  rowsRender = dipendenti.map(d => {
+    const s = stats[d];
+    const weeksThisYearUpToNow = Array.from(s.eventsWeeksAll)
+      .map(k => { const [yPart,wPart] = k.split("-W"); return { y:+yPart, w:+wPart }; })
+      .filter(o => o.y === curY && o.w <= curW)
+      .sort((a,b)=>a.w-b.w);
+    const nEvents = weeksThisYearUpToNow.length;
+    const perc = curW > 0 ? (nEvents / curW) * 100 : 0;
+    return {
+      dip:d,
+      aperture:s.aperture,
+      chiusure:s.chiusure,
+      apertureWEFest:s.apertureWEFest,
+      chiusureWEFest:s.chiusureWEFest,
+      ferie:s.ferie, riposo:s.riposo, "104":s["104"], malattia:s.malattia,
+      _eventsN:nEvents, _eventsPct:perc, _weeksList: weeksThisYearUpToNow.map(o=>o.w).join(", ") || "—"
+    };
+  });
+  // metrics
+  perMetricValues = {};
+  Object.keys(headerIdByKey).forEach(k => perMetricValues[k] = rowsRender.map(r => r[k]));
+  // column status + header style
+  columnStatus = {};
+  for (const key of DOT_KEYS){
+    const vals = perMetricValues[key];
+    const st = assessBalanceShares(vals);
+    columnStatus[key] = st;
+    const th = document.getElementById(headerIdByKey[key]);
+    th?.classList.remove("balanced-col","balanced-outline");
+    if (st.balanced) th?.classList.add("balanced-col","balanced-outline");
+  }
+  // render body
+  tbody.innerHTML = rowsRender.map((r, rowIdx) => {
+    function cell(key, extraCls="", isNum=true){
+      const isDotCol = DOT_KEYS.has(key);
+      const st = isDotCol ? columnStatus[key] : null;
+      const val = r[key];
+      const ringCls = (!st || st.balanced || st.outIndex !== rowIdx) ? 'ring' : 'ring red';
+      const tdCls = ['num'];
+      if (extraCls) tdCls.push(extraCls);
+      if (isDotCol && st && st.balanced) tdCls.push('balanced-col','balanced-outline');
+      const content = isNum ? `<span class="${ringCls}">${val}</span>` : val;
+      return `<td class="${tdCls.join(' ')}">${content}</td>`;
+    }
+    return `<tr>
+      <td>${r.dip}</td>
+      ${cell("aperture")}
+      ${cell("chiusure")}
+      ${cell("apertureWEFest")}
+      ${cell("chiusureWEFest")}
+      ${cell("ferie")}
+      ${cell("riposo")}
+      ${cell("104")}
+      ${cell("malattia")}
+      ${cell("_eventsN","focus focus-start")}
+      <td class="num focus"><span class="ring">${r._eventsPct.toFixed(1)}%</span></td>
+      <td class="weeks focus focus-end">${r._weeksList}</td>
+    </tr>`;
+  }).join("");
+  // NOTE
+  const labels = dipendenti;
+  const notes = [
+    adviceObjective(perMetricValues["aperture"], labels, "Aperture"),
+    adviceObjective(perMetricValues["chiusure"], labels, "Chiusure"),
+    adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi"),
+    adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
+    adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
+  ];
+  notesBody.innerHTML = notes.map(n => {
+    const [title, ...rest] = n.split(": ");
+    return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
+  }).join("");
+}
 
-      // Stato colonne e header verde
-      const columnStatus = {};
-      for (const key of DOT_KEYS){
-        const vals = perMetricValues[key];
-        const st = assessBalanceShares(vals);
-        columnStatus[key] = st;
-        if (st.balanced){
-          const th = document.getElementById(headerIdByKey[key]);
-          th?.classList.add("balanced-col","balanced-outline");
-        }
-      }
+// Inizializza selettore e viste
+renderHomeChooser();
+recomputeHistoricEvents();
+buildRowsAndMetrics();
 
-      // Render tabella principale
-      const tbody = document.getElementById("riepilogo");
-      tbody.innerHTML = rowsRender.map((r, rowIdx) => {
-        function cell(key, extraCls="", isNum=true){
-          const isDotCol = DOT_KEYS.has(key);
-          const st = isDotCol ? columnStatus[key] : null;
-          const val = r[key];
-          const ringCls = (!st || st.balanced || st.outIndex !== rowIdx) ? 'ring' : 'ring red';
-          const tdCls = ['num'];
-          if (extraCls) tdCls.push(extraCls);
-          if (isDotCol && st && st.balanced) tdCls.push('balanced-col','balanced-outline');
-          const content = isNum ? `<span class="${ringCls}">${val}</span>` : val;
-          return `<td class="${tdCls.join(' ')}">${content}</td>`;
-        }
-        return `<tr>
-          <td>${r.dip}</td>
-          ${cell("aperture")}
-          ${cell("chiusure")}
-          ${cell("apertureWEFest")}
-          ${cell("chiusureWEFest")}
-          ${cell("ferie")}
-          ${cell("riposo")}
-          ${cell("104")}
-          ${cell("malattia")}
-          ${cell("_eventsN","focus focus-start")}
-          <td class="num focus"><span class="ring">${r._eventsPct.toFixed(1)}%</span></td>
-          <td class="weeks focus focus-end">${r._weeksList}</td>
-        </tr>`;
-      }).join("");
-
-      // NOTE per prossima settimana — “aumentare a / diminuire a”
-      function humanListBold(names){
-        if (names.length === 1) return `<b>${names[0]}</b>`;
-        if (names.length === 2) return `<b>${names[0]}</b> e <b>${names[1]}</b>`;
-        return names.slice(0,-1).map(n=>`<b>${n}</b>`).join(", ") + ` e <b>${names.slice(-1)[0]}</b>`;
-      }
-      function adviceObjective(values, labels, what){
-        const st = assessBalanceShares(values);
-        if (st.balanced) return `${what}: distribuzione bilanciata — nessuna azione specifica.`;
-        const sum = values.reduce((a,b)=>a+b,0);
-        const shares = sum>0 ? values.map(v => v/sum) : values.map(_=>0);
-        const max = Math.max(...shares), min = Math.min(...shares);
-        const maxGroup = labels.filter((_,i)=>shares[i]===max);
-        const minGroup = labels.filter((_,i)=>shares[i]===min);
-        const isHighOut = (st.outIndex !== null) && (shares[st.outIndex] === max);
-        return isHighOut
-          ? `${what}: diminuire a ${humanListBold(maxGroup)} • aumentare a ${humanListBold(minGroup)}`
-          : `${what}: aumentare a ${humanListBold(minGroup)} • diminuire a ${humanListBold(maxGroup)}`;
-      }
-
-      const labels = dipendenti;
-      const notes = [
-        adviceObjective(perMetricValues["aperture"], labels, "Aperture"),
-        adviceObjective(perMetricValues["chiusure"], labels, "Chiusure"),
-        adviceObjective(perMetricValues["apertureWEFest"], labels, "Aperture nel weekend/festivi"),
-        adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
-        adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
-      ];
-      document.getElementById("notesBody").innerHTML = notes.map(n => {
-        const [title, ...rest] = n.split(": ");
-        return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
-      }).join("");
-
-      /* =========================
+/* =========================
          PLANNER SETTIMANA PROSSIMA
          ========================= */
       const plannerHead = document.getElementById('plannerHead');
@@ -605,7 +655,7 @@
           eventsWeeksAll: new Set()
         });
 
-        const isHomePlan = (v) => ["ferie","riposo","104","malattia","rec","festivo"].includes((v||"").toLowerCase());
+        const isHomePlan = (v) => isHomeDynamic(v);
 
         // per calcolo WE/Festivi e long-weekend
         for (let i=0;i<7;i++){
