@@ -148,7 +148,6 @@
               <li><b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
               <li><b>Sabato + Domenica + Lunedì</b> tutti e tre “a casa”.</li>
               <li><b>Domenica + Lunedì</b> entrambi “a casa”.</li>
-              <li><b>Sabato + Domenica</b> entrambi “a casa”.</li>
               <li><b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
               <li><b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
               <li><b>Sabato + Domenica</b> entrambi “a casa” + <b>lunedì successivo festivo</b>.</li>
@@ -185,6 +184,10 @@
         <h2 class="card-title">Pianifica orari – settimana prossima</h2>
         <div class="badges" style="margin:0">
           <div class="badge" id="plannerRange">Settimana: —</div>
+          <label class="badge" style="cursor:pointer"><input id="chkCumulative" type="checkbox" checked /> Valuta sul cumulato</label>
+          <button id="btnEval" class="badge" style="cursor:pointer">Valuta pianificazione</button>
+          <button id="btnReset" class="badge" style="cursor:pointer">Reset</button>
+        </div>
           <button id="btnEval" class="badge" style="cursor:pointer">Valuta pianificazione</button>
           <button id="btnReset" class="badge" style="cursor:pointer">Reset</button>
         </div>
@@ -439,11 +442,8 @@ function recomputeHistoricEvents(){
       const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO (da foglio)
       const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO (da foglio) + Sab a casa + Dom a casa
       const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO (da foglio)
-const condG = satHome && sunHome; // NEW: Sab+Dom entrambi "a casa"
 
-
-      
-      if (condA || condB || condC || condD || condE || condF || condG){
+      if (condA || condB || condC || condD || condE || condF){
         stats[col].eventsWeeksAll.add(wKey);
       }
     }
@@ -729,10 +729,8 @@ buildRowsAndMetrics();
           const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO (planner)
           const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO (planner) + Sab a casa + Dom a casa
           const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO (planner)
-          const condG = satHome && sunHome; // NEW
 
-
-          if (condA || condB || condC || condD || condE || condF || condG){ pStats[emp].eventsWeeksAll.add(wKey); }
+          if (condA || condB || condC || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
         }
 
         return pStats;
@@ -744,9 +742,85 @@ buildRowsAndMetrics();
         const pStats = computePlanStats();
         const feedbackBody = document.getElementById('planFeedback');
         const summary = document.getElementById('planSummary');
+        const cumulative = document.getElementById('chkCumulative')?.checked;
 
         const METRICS = [
           { key:'aperture', label:'Aperture' },
+          { key:'chiusure', label:'Chiusure' },
+          { key:'apertureWEFest', label:'Aperture nel weekend/festivi' },
+          { key:'chiusureWEFest', label:'Chiusure nel weekend/festivi' },
+          { key:'_eventsN', label:'Eventi "a casa"' }
+        ];
+
+        // Costruisco vettori storico (h) e planner (p)
+        const hist = {}; const plan = {};
+        for (const m of METRICS){
+          if (m.key === '_eventsN'){
+            hist[m.key] = perMetricValuesCache['_eventsN'];
+            plan[m.key] = dipendenti.map(d => (pStats[d].eventsWeeksAll.size || 0));
+          } else {
+            hist[m.key] = dipendenti.map(d => (stats[d][m.key] || 0));
+            plan[m.key] = dipendenti.map(d => (pStats[d][m.key] || 0));
+          }
+        }
+
+        function arrSum(a){ return a.reduce((x,y)=>x+y,0); }
+        function shares(values){ const s = arrSum(values); return s>0 ? values.map(v=>v/s) : values.map(_=>0); }
+
+        let improved = 0, worsened = 0, neutral = 0;
+        const rows = [];
+        const EPS = 1e-6;
+
+        for (const m of METRICS){
+          const h = hist[m.key];
+          const p = plan[m.key];
+          const sP = arrSum(p);
+          if (sP === 0){
+            rows.push({label:m.label, icon:'ℹ️', verdict:'Nessun evento pianificato per questa voce'}); neutral++; continue;
+          }
+
+          // Confronto: storico (H) vs cumulato (H+P) se richiesto, altrimenti H vs solo P
+          const x = cumulative ? h.map((v,i)=>v + p[i]) : p.slice();
+
+          const stH = assessBalanceShares(h);
+          const stX = assessBalanceShares(x);
+          const shrH = shares(h);
+          const shrX = shares(x);
+
+          const idxMaxH = shrH.indexOf(Math.max(...shrH));
+          const idxMinH = shrH.indexOf(Math.min(...shrH));
+          const idxMaxX = shrX.indexOf(Math.max(...shrX));
+          const idxMinX = shrX.indexOf(Math.min(...shrX));
+
+          // Coerenza direzione con le note: il max storico dovrebbe scendere, il min storico salire
+          const arrowMax = shrX[idxMaxH] < shrH[idxMaxH] - EPS ? '↓' : (Math.abs(shrX[idxMaxH]-shrH[idxMaxH])<=EPS ? '→' : '↑');
+          const arrowMin = shrX[idxMinH] > shrH[idxMinH] + EPS ? '↑' : (Math.abs(shrX[idxMinH]-shrH[idxMinH])<=EPS ? '→' : '↓');
+
+          let icon, verdict;
+          if (stX.spread < stH.spread - EPS){
+            icon = '✅';
+            verdict = `Spread ${(stH.spread*100).toFixed(1)}pp → ${(stX.spread*100).toFixed(1)}pp • Storico: max ${dipendenti[idxMaxH]}, min ${dipendenti[idxMinH]} → C${cumulative?'umulato':'al piano'}: max ${dipendenti[idxMaxX]}, min ${dipendenti[idxMinX]} • ${arrowMax} ${dipendenti[idxMaxH]} • ${arrowMin} ${dipendenti[idxMinH]}`;
+            improved++;
+          } else if (stX.spread > stH.spread + EPS){
+            icon = '❌';
+            verdict = `Spread aumentato: ${(stH.spread*100).toFixed(1)}pp → ${(stX.spread*100).toFixed(1)}pp • ${arrowMax} ${dipendenti[idxMaxH]} • ${arrowMin} ${dipendenti[idxMinH]}`;
+            worsened++;
+          } else {
+            icon = '⚠️';
+            verdict = `Spread invariato: ${(stH.spread*100).toFixed(1)}pp • ${arrowMax} ${dipendenti[idxMaxH]} • ${arrowMin} ${dipendenti[idxMinH]}`;
+            neutral++;
+          }
+
+          rows.push({label:m.label, icon, verdict});
+        }
+
+        feedbackBody.innerHTML = rows.map(r => `<tr><td><b>${r.label}</b></td><td style="width:80px">${r.icon}</td><td>${r.verdict}</td></tr>`).join('');
+        const total = improved + worsened + neutral;
+        const pillClass = worsened===0 && improved>0 ? 'pill ok' : (worsened>0 ? 'pill bad' : 'pill warn');
+        plannerStatus.className = pillClass;
+        plannerStatus.textContent = worsened===0 && improved>0 ? 'Congruità buona' : (worsened>0 ? 'Congruità da rivedere' : 'Congruità neutra');
+        summary.textContent = `Miglioramenti: ${improved}/${total} • Peggioramenti: ${worsened}/${total} • Neutre: ${neutral}/${total}`;
+      },
           { key:'chiusure', label:'Chiusure' },
           { key:'apertureWEFest', label:'Aperture nel weekend/festivi' },
           { key:'chiusureWEFest', label:'Chiusure nel weekend/festivi' },
