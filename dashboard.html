@@ -139,7 +139,8 @@
           <li>
   <div class="muted">Seleziona quali eventi contano come <b>“a casa”</b> (storico + simulazione):</div>
   <div class="home-chooser" id="homeChooser"></div>
-  <div class="muted">Default consigliato: <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</div>
+          <div class="muted">Per i weekend lunghi, <b>FESTIVO</b> è letto direttamente dal foglio (cella = “FESTIVO” per quel dipendente), non dal calendario.</div>
+          <div class="muted">Default consigliato: <code>FERIE</code>, <code>RIPOSO</code>, <code>104</code>, <code>MALATTIA</code>.</div>
 </li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
@@ -413,22 +414,29 @@ function recomputeHistoricEvents(){
     const d = new Date(ymd);
     if (d.getDay() !== 0) continue; // solo domeniche
     const sun = d, sat = addDays(sun,-1), fri = addDays(sun,-2), mon = addDays(sun,1);
-    const friHoliday = isHoliday(fri, holidaysMap);
-    const monHoliday = isHoliday(mon, holidaysMap);
+    
     const wKey = isoWeekKey(sun);
 
     for (const col of dipCols){
       const friHome = isHomeDynamic(get(toYMD(fri), col));
       const satHome = isHomeDynamic(get(toYMD(sat), col));
-      const sunHome = isHomeDynamic(get(toYMD(sun), col));
-      const monHome = isHomeDynamic(get(toYMD(mon), col));
+      const sunHome = isHomePlan(getPlanVal(emp, ySun));
+
+          // "FESTIVO" per weekend lunghi letto dal planner (valore pianificato), non da calendario
+          const friFestivo = (getPlanVal(emp, yFri) || "").toString().toLowerCase() === 'festivo';
+          const monFestivo = (getPlanVal(emp, yMon) || "").toString().toLowerCase() === 'festivo';
+      const monHome = isHomeDynamic(getCell(toYMD(mon), col));
+
+          // "FESTIVO" per weekend lunghi letto dal foglio (per dipendente), non da calendario
+          const friFestivo = (getCell(toYMD(fri), col) || "").toString().toLowerCase() === 'festivo';
+          const monFestivo = (getCell(toYMD(mon), col) || "").toString().toLowerCase() === 'festivo';
 
       const condA = friHome && satHome && sunHome;
       const condB = satHome && sunHome && monHome;
       const condC = sunHome && monHome;
-      const condD = sunHome && monHoliday;
-      const condE = friHoliday && satHome && sunHome;
-      const condF = satHome && sunHome && monHoliday;
+      const condD = sunHome && monFestivo;
+      const condE = friFestivo && satHome && sunHome;
+      const condF = satHome && sunHome && monFestivo;
 
       if (condA || condB || condC || condD || condE || condF){
         stats[col].eventsWeeksAll.add(wKey);
@@ -691,9 +699,7 @@ buildRowsAndMetrics();
         const sat = days7[5];
         const fri = days7[4];
         const nextMon = addDays(sun, 1);
-        const friHoliday = isHoliday(fri, holidaysMap);
-        const monHoliday = isHoliday(nextMon, holidaysMap);
-        const yFri = toYMD(fri), ySat = toYMD(sat), ySun = toYMD(sun);
+        const yFri = toYMD(fri), ySat = toYMD(sat), ySun = toYMD(sun), yMon = toYMD(nextMon);
         const wKey = `${isoWeekYear(sun)}-W${String(isoWeek(sun)).padStart(2,'0')}`;
 
         const getPlanVal = (emp, ymd) => (saved[emp] && saved[emp][ymd]) || "";
@@ -704,9 +710,9 @@ buildRowsAndMetrics();
           const sunHome = isHomePlan(getPlanVal(emp, ySun));
 
           const condA = friHome && satHome && sunHome;
-          const condD = sunHome && monHoliday;
-          const condE = friHoliday && satHome && sunHome;
-          const condF = satHome && sunHome && monHoliday;
+          const condD = sunHome && monFestivo;
+          const condE = friFestivo && satHome && sunHome;
+          const condF = satHome && sunHome && monFestivo;
           if (condA || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
         }
 
