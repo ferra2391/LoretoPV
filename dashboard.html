@@ -411,8 +411,10 @@
             const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO
             const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO + Sab a casa + Dom a casa
             const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO
+const condG = satHome && sunHome; // NEW: Sab+Dom entrambi "a casa"
 
-            if (condA || condB || condC || condD || condE || condF){
+
+            if (condA || condB || condC || condD || condE || condF || condG){
               stats[col].eventsWeeksAll.add(wKey);
             }
           }
@@ -679,9 +681,11 @@
           const condD = sunHome && monFestivo;
           const condE = friFestivo && satHome && sunHome;
           const condF = satHome && sunHome && monFestivo;
+          const condG = satHome && sunHome; // NEW
 
-          if (condA || condB || condC || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
-        }
+
+if (condA || condB || condC || condD || condE || condF || condG){  pStats[emp].eventsWeeksAll.add(wKey);
+}
 
         return pStats;
       }
