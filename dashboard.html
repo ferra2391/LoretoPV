@@ -571,7 +571,7 @@
         ${days7.map(d=>`<th>${fmt.format(d)}</th>`).join("")}
       </tr>`;
 
-      const OPTIONS = ["", "apertura", "chiusura", "rec", "riposo", "104", "festivo", "malattia"];
+      const OPTIONS = ["", "apertura", "chiusura", "rec", "riposo", "104", "festivo", "malattia", "ferie"];
 
       const LS_KEY = `planner-${daysYMD[0]}-${daysYMD[6]}`;
       function loadPlan(){ try{ return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }catch{ return {}; } }
