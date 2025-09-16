@@ -213,9 +213,10 @@
 
     // === UTILS ===
     function getPubInfo(pubhtml){
-      const idm = pubhtml.match(/\\/d\\/e\\/([^/]+)\\/pubhtml/);
+      // CORREZIONE: Regex corrette per interpretare l'URL
+      const idm = pubhtml.match(/\/d\/e\/([^\/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
-      const gidm = pubhtml.match(/[?&]gid=(\\d+)/);
+      const gidm = pubhtml.match(/[?&]gid=(\d+)/);
       return { pubId: idm[1], gid: gidm ? gidm[1] : "0" };
     }
     async function fetchCSV(url){
@@ -230,9 +231,9 @@
     // Date utils (tutte in locale per evitare slittamenti)
     function parseItaDate(dstr){
       if (!dstr) return null;
-      const ymd = dstr.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      const ymd = dstr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (ymd) return new Date(+ymd[1], +ymd[2]-1, +ymd[3]);
-      const dmy = dstr.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+      const dmy = dstr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (dmy) return new Date(+dmy[3], +dmy[2]-1, +dmy[1]);
       return new Date(dstr);
     }
@@ -271,14 +272,10 @@
 
       // Carico CSV
       const { pubId, gid } = getPubInfo(PUBHTML);
-      // CORREZIONE: Uso l'endpoint /gviz/tq per un output CSV più affidabile
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${pubId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+      let csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
       let rows;
-      try {
-        rows = await fetchCSV(csvUrl);
-      } catch(e) {
-        throw new Error("Impossibile caricare i dati dal foglio Google. Controlla che sia pubblicato correttamente.");
-      }
+      try { rows = await fetchCSV(csvUrl); }
+      catch(e1){ csvUrl = `https://docs.google.com/spreadsheets/d/e/${pubId}/gviz/tq?gid=${gid}&tqx=out:csv`; rows = await fetchCSV(csvUrl); }
 
       // Colonne
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
