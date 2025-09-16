@@ -138,6 +138,7 @@
             <ul>
               <li><b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
               <li><b>Sabato + Domenica + Lunedì</b> tutti e tre “a casa”.</li>
+              <li><b>Sabato + Domenica</b> entrambi “a casa”.</li>
               <li><b>Domenica + Lunedì</b> entrambi “a casa”.</li>
               <li><b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
               <li><b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
@@ -411,8 +412,10 @@
             const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO
             const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO + Sab a casa + Dom a casa
             const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO
+            const condG = satHome && sunHome; // NEW: Sab+Dom entrambi "a casa"
 
-            if (condA || condB || condC || condD || condE || condF){
+
+            if (condA || condB || condC || condD || condE || condF || condG){
               stats[col].eventsWeeksAll.add(wKey);
             }
           }
@@ -679,8 +682,10 @@
           const condD = sunHome && monFestivo;
           const condE = friFestivo && satHome && sunHome;
           const condF = satHome && sunHome && monFestivo;
+          const condG = satHome && sunHome; // NEW
 
-          if (condA || condB || condC || condD || condE || condF){ pStats[emp].eventsWeeksAll.add(wKey); }
+
+          if (condA || condB || condC || condD || condE || condF || condG){ pStats[emp].eventsWeeksAll.add(wKey); }
         }
 
         return pStats;
