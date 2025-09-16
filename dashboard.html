@@ -95,7 +95,6 @@
   </header>
 
   <main class="wrap" aria-live="polite">
-    <!-- RIEPILOGO STORICO -->
     <section class="card" aria-label="Riepilogo per dipendente">
       <div class="card-header"><h2 class="card-title">Riepilogo per dipendente</h2></div>
       <div class="card-body">
@@ -123,7 +122,6 @@
       </div>
     </section>
 
-    <!-- LEGENDA -->
     <section class="card" id="legend">
       <div class="card-header"><h2 class="card-title">Legenda & criteri di calcolo</h2></div>
       <div class="card-body legend">
@@ -156,7 +154,6 @@
       </div>
     </section>
 
-    <!-- NOTE -->
     <section class="card notes" aria-label="Note per Orari della prossima settimana">
       <div class="card-header"><h2 class="card-title">Note per Orari della prossima settimana</h2></div>
       <div class="card-body">
@@ -172,7 +169,6 @@
       </div>
     </section>
 
-    <!-- PLANNER -->
     <section class="card planner" aria-label="Pianifica orari settimana prossima">
       <div class="card-header" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
         <h2 class="card-title">Pianifica orari – settimana prossima</h2>
@@ -197,7 +193,6 @@
       </div>
     </section>
 
-    <!-- VALUTAZIONE -->
     <section class="card" aria-label="Valutazione congruità pianificazione">
       <div class="card-header"><h2 class="card-title">Valutazione congruità rispetto alle note</h2></div>
       <div class="card-body">
@@ -225,7 +220,7 @@
     }
     async function fetchCSV(url){
       const r = await fetch(url);
-      if(!r.ok) throw new Error(\`Fetch failed \${r.status}\`);
+      if(!r.ok) throw new Error(`Fetch failed ${r.status}`);
       const text = await r.text();
       const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
       if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
@@ -243,7 +238,7 @@
     }
     function toYMD(d){
       const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
-      return \`\${y}-\${m}-\${da}\`;
+      return `${y}-${m}-${da}`;
     }
     function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
     function startOfISOWeek(date){
@@ -271,15 +266,19 @@
     (async function main(){
       // Badges
       const now = new Date();
-      document.getElementById("isoBadge").textContent = \`Settimana ISO: \${isoWeek(now)}/\${isoWeekYear(now)}\`;
-      document.getElementById("updBadge").textContent = \`Aggiornato: \${now.toLocaleDateString('it-IT')} \${now.toLocaleTimeString('it-IT')}\`;
+      document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
+      document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`;
 
       // Carico CSV
       const { pubId, gid } = getPubInfo(PUBHTML);
-      let csvUrl = \`https://docs.google.com/spreadsheets/d/e/\${pubId}/pub?gid=\${gid}&single=true&output=csv\`;
+      // CORREZIONE: Uso l'endpoint /gviz/tq per un output CSV più affidabile
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${pubId}/gviz/tq?tqx=out:csv&gid=${gid}`;
       let rows;
-      try { rows = await fetchCSV(csvUrl); }
-      catch(e1){ csvUrl = \`https://docs.google.com/spreadsheets/d/e/\${pubId}/gviz/tq?gid=\${gid}&tqx=out:csv\`; rows = await fetchCSV(csvUrl); }
+      try {
+        rows = await fetchCSV(csvUrl);
+      } catch(e) {
+        throw new Error("Impossibile caricare i dati dal foglio Google. Controlla che sia pubblicato correttamente.");
+      }
 
       // Colonne
       const headerKeys = rows.length ? Object.keys(rows[0]) : [];
@@ -339,15 +338,15 @@
       // Range
       const rangeEl = document.getElementById('rangeInfo');
       if (minDate && maxDate){
-        rangeEl.textContent = \`Dati elaborati dal \${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al \${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})}\`;
+        rangeEl.textContent = `Dati elaborati dal ${minDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})} al ${maxDate.toLocaleDateString('it-IT',{timeZone:'Europe/Rome'})}`;
       } else {
-        rangeEl.textContent = \`Dati elaborati: nessuna data valida trovata nel foglio\`;
+        rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
       // Helpers storico
       const allDates = Array.from(byDate.keys()).sort();
       const getCell = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
-      function isoWeekKey(date){ return \`\${isoWeekYear(date)}-W\${String(isoWeek(date)).padStart(2,"0")}\`; }
+      function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
       // Scelta "a casa"
       const HOME_LS_KEY = 'home-events-v1';
@@ -368,10 +367,10 @@
       function renderHomeChooser(){
         const host = document.getElementById('homeChooser');
         host.innerHTML = HOME_ALL.map(k=>{
-          const id = \`home-\${k}\`;
+          const id = `home-${k}`;
           const label = k.toUpperCase();
           const checked = homeSet.has(k) ? ' checked' : '';
-          return \`<label for="\${id}"><input type="checkbox" id="\${id}" value="\${k}"\${checked}/> \${label}</label>\`;
+          return `<label for="${id}"><input type="checkbox" id="${id}" value="${k}"${checked}/> ${label}</label>`;
         }).join('');
         host.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
           chk.addEventListener('change', ()=>{
