@@ -212,7 +212,8 @@
 
   <script>
     // === CONFIG: link Google Sheet pubblicato (LETTURA) ===
-    const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH7VUajc9qeQfzNkrOYNykZUALgfqN6nYzE3hNdQEO0uOk__412V2kkjAlxPeUKxftldk3qXyfCDg5/pubhtml";
+    const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH7VUajc9qeQfzNkrOYNykZUALgfqN6nYzE3hNdQEO0uOk__412V2kkjAlxPeUKxftldk3qXyfCDg5/pubhtml?gid=0&single=true";
+
 
     // === CONFIG: Web App GAS (SCRITTURA) ===
     // INCOLLA QUI l'URL di deployment della tua Web App (Deploy > New deployment > Web app > Anyone with the link)
@@ -815,11 +816,12 @@
         };
 
         try {
-          const res = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
+const res = await fetch(SCRIPT_URL, {
+   method: 'POST',
+   // text/plain rende la richiesta "simple" e il browser NON fa la preflight CORS
+   headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+   body: JSON.stringify(payload)
+ });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const out = await res.json();
           if (!out.ok) throw new Error(out.error || 'Errore server');
