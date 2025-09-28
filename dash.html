@@ -16,7 +16,6 @@
     header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
     .wrap{ max-width: 1680px; margin:0 auto; padding:18px 20px; }
 
-    /* HEADER centrato */
     header .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
     h1{ margin:0; font-size:22px; color:var(--head); }
     .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; justify-content:center; }
@@ -79,6 +78,12 @@
 
     .home-chooser{ display:flex; flex-wrap:wrap; gap:10px; margin:10px 0 6px }
     .home-chooser label{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-size:12px; cursor:pointer }
+
+    /* Checkbox dentro alle frasi delle regole */
+    .rules-list{ list-style:none; margin:6px 0 0 0; padding-left:0 }
+    .rules-list li{ display:flex; align-items:flex-start; gap:8px; margin:6px 0 }
+    .rules-list input[type="checkbox"]{ margin-top:2px }
+    .rules-list b{ white-space:nowrap }
   </style>
 </head>
 <body>
@@ -134,23 +139,10 @@
           </li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
-            <ul>
-              <li>A) <b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
-              <li>B) <b>Sabato + Domenica + Lunedì</b> tutti e tre “a casa”.</li>
-              <li>C) <b>Sabato + Domenica</b> entrambi “a casa”.</li>
-              <li>D) <b>Domenica + Lunedì</b> entrambi “a casa”.</li>
-              <li>E) <b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
-              <li>F) <b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
-              <li>G) <b>Sabato + Domenica</b> entrambi “a casa” + <b>lunedì successivo festivo</b>.</li>
-            </ul>
+            <!-- verrà popolato in JS con checkbox a sinistra -->
+            <ul id="rulesList" class="rules-list"></ul>
           </li>
         </ul>
-
-        <!-- Scelta delle 7 regole attive -->
-        <div style="margin-top:12px">
-          <div class="muted">Attiva/disattiva le condizioni che fanno scattare l’<b>evento ancorato alla domenica</b>:</div>
-          <div id="rulesChooser" class="home-chooser" style="margin-top:6px"></div>
-        </div>
 
         <h3 style="margin-top:16px">Bollini e bilanciamento</h3>
         <ul>
@@ -387,40 +379,51 @@
         });
       }
 
-      // === NUOVO: 7 regole evento-domenica ===
-      const RULE_KEYS = ["A","B","C","D","E","F","G"];
+      // === Regole evento-domenica (con H/I nuovi) ===
+      const RULE_KEYS = ["A","B","C","D","E","F","G","H","I"];
       const RULE_LABELS = {
-        A: 'Ven + Sab + Dom tutti "a casa"',
-        B: 'Sab + Dom + Lun tutti "a casa"',
-        C: 'Sab + Dom entrambi "a casa"',
-        D: 'Dom + Lun entrambi "a casa"',
-        E: 'Dom "a casa" + lunedì festivo',
-        F: 'Venerdì festivo + Sab "a casa" + Dom "a casa"',
-        G: 'Sab + Dom "a casa" + lunedì festivo'
+        A: 'Venerdì + Sabato + Domenica tutti “a casa”',
+        B: 'Sabato + Domenica + Lunedì tutti “a casa”',
+        C: 'Sabato + Domenica entrambi “a casa”',
+        D: 'Domenica + Lunedì entrambi “a casa”',
+        E: 'Domenica “a casa” + lunedì successivo festivo',
+        F: 'Venerdì festivo + Sabato “a casa” + Domenica “a casa”',
+        G: 'Sabato + Domenica “a casa” + lunedì successivo festivo',
+        H: 'Solo Sabato “a casa”',
+        I: 'Solo Domenica “a casa”'
       };
-      const RULE_LS_KEY = "weekend-rule-flags-v1";
+      // default: A..G on, H/I off
+      const RULE_DEFAULT = new Set(["A","B","C","D","E","F","G"]);
+      const RULE_LS_KEY = "weekend-rule-flags-v2";
+
       let ruleSet = loadRuleSet();
       function loadRuleSet(){
         try{
           const raw = JSON.parse(localStorage.getItem(RULE_LS_KEY) || "null");
           if (Array.isArray(raw)){
             const s = new Set(raw.filter(k => RULE_KEYS.includes(k)));
-            return s.size ? s : new Set(RULE_KEYS);
+            return s.size ? s : new Set(RULE_DEFAULT);
           }
-          return new Set(RULE_KEYS);
+          return new Set(RULE_DEFAULT);
         } catch {
-          return new Set(RULE_KEYS);
+          return new Set(RULE_DEFAULT);
         }
       }
       function saveRuleSet(){ localStorage.setItem(RULE_LS_KEY, JSON.stringify(Array.from(ruleSet))); }
       function isRuleEnabled(key){ return ruleSet.has(key); }
-      function renderRulesChooser(){
-        const host = document.getElementById("rulesChooser");
+
+      // Checkbox dentro alle frasi (a sinistra)
+      function renderRulesList(){
+        const host = document.getElementById("rulesList");
         if (!host) return;
-        host.innerHTML = RULE_KEYS.map(k=>{
-          const id = `rule-${k}`;
-          const checked = isRuleEnabled(k) ? " checked" : "";
-          return `<label for="${id}"><input type="checkbox" id="${id}" value="${k}"${checked}/> ${k}) ${RULE_LABELS[k]}</label>`;
+        host.innerHTML = [
+          "A","B","C","D","E","F","G","H","I"
+        ].map(k=>{
+          const checked = isRuleEnabled(k) ? ' checked' : '';
+          return `<li>
+            <input type="checkbox" id="rule-${k}" value="${k}"${checked} />
+            <label for="rule-${k}"><b>${k})</b> ${RULE_LABELS[k]}</label>
+          </li>`;
         }).join("");
         host.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
           chk.addEventListener('change', ()=>{
@@ -434,7 +437,7 @@
         });
       }
 
-      // Eventi “a casa” storici (FESTIVO letto dal foglio)
+      // Eventi “a casa” storici (ancorati alla domenica)
       function recomputeHistoricEvents(){
         for (const col of dipCols){ stats[col].eventsWeeksAll = new Set(); }
         for (const ymd of allDates){
@@ -457,25 +460,30 @@
             const friFestivo = (friVal || "").toLowerCase() === 'festivo';
             const monFestivo = (monVal || "").toLowerCase() === 'festivo';
 
-            // Condizioni originarie
-            const condA = friHome && satHome && sunHome;          // Ven+Sab+Dom a casa
-            const condB = satHome && sunHome && monHome;          // Sab+Dom+Lun a casa
-            const condC = sunHome && monHome;                     // Dom+Lun a casa
-            const condD = sunHome && monFestivo;                  // Dom a casa + lun festivo
-            const condE = friFestivo && satHome && sunHome;       // Ven festivo + Sab a casa + Dom a casa
-            const condF = satHome && sunHome && monFestivo;       // Sab+Dom a casa + lun festivo
-            const condG = satHome && sunHome;                     // Sab+Dom a casa
+            // condizioni originarie
+            const condA = friHome && satHome && sunHome;          // Ven+Sab+Dom "a casa"
+            const condB = satHome && sunHome && monHome;          // Sab+Dom+Lun "a casa"
+            const condC = sunHome && monHome;                     // Dom+Lun "a casa"
+            const condD = sunHome && monFestivo;                  // Dom "a casa" + lun festivo
+            const condE = friFestivo && satHome && sunHome;       // Ven festivo + Sab "a casa" + Dom "a casa"
+            const condF = satHome && sunHome && monFestivo;       // Sab+Dom "a casa" + lun festivo
+            const condG = satHome && sunHome;                     // Sab+Dom "a casa"
+            // nuove
+            const condH = satHome;                                // Solo Sabato "a casa"
+            const condI = sunHome;                                // Solo Domenica "a casa"
 
-            // Gate regole attive
             const triggers = [
               isRuleEnabled("A") && condA,
               isRuleEnabled("B") && condB,
-              isRuleEnabled("C") && condG, // "Sab+Dom"
-              isRuleEnabled("D") && condC, // "Dom+Lun"
-              isRuleEnabled("E") && condD, // "Dom a casa + lun festivo"
-              isRuleEnabled("F") && condE, // "Ven festivo + Sab a casa + Dom a casa"
-              isRuleEnabled("G") && condF  // "Sab+Dom a casa + lun festivo"
+              isRuleEnabled("C") && condG,
+              isRuleEnabled("D") && condC,
+              isRuleEnabled("E") && condD,
+              isRuleEnabled("F") && condE,
+              isRuleEnabled("G") && condF,
+              isRuleEnabled("H") && condH,
+              isRuleEnabled("I") && condI
             ];
+
             if (triggers.some(Boolean)){
               stats[col].eventsWeeksAll.add(wKey);
             }
@@ -483,7 +491,7 @@
         }
       }
 
-      // --- Riepilogo + Note
+      // Riepilogo + Note
       const today = new Date();
       const curW = isoWeek(today), curY = isoWeekYear(today);
       const tbodyEl = document.getElementById("riepilogo");
@@ -609,7 +617,7 @@
 
       // Avvio storico + UI
       renderHomeChooser();
-      renderRulesChooser();
+      renderRulesList();
       recomputeHistoricEvents();
       buildRowsAndMetrics();
 
@@ -714,7 +722,7 @@
           }
         }
 
-        // Eventi lunghi (ven-sab-dom + lunedì successivo)
+        // Eventi lunghi (ancorati alla domenica corrente del planner)
         const sun = days7[6];
         const sat = days7[5];
         const fri = days7[4];
@@ -738,7 +746,7 @@
           const friFestivo = (friVal || '').toLowerCase() === 'festivo';
           const monFestivo = (monVal || '').toLowerCase() === 'festivo';
 
-          // Condizioni originarie
+          // condizioni originarie
           const condA = friHome && satHome && sunHome;
           const condB = satHome && sunHome && monHome;
           const condC = sunHome && monHome;
@@ -746,8 +754,10 @@
           const condE = friFestivo && satHome && sunHome;
           const condF = satHome && sunHome && monFestivo;
           const condG = satHome && sunHome;
+          // nuove
+          const condH = satHome;
+          const condI = sunHome;
 
-          // Gate regole attive
           const triggers = [
             isRuleEnabled("A") && condA,
             isRuleEnabled("B") && condB,
@@ -755,7 +765,9 @@
             isRuleEnabled("D") && condC,
             isRuleEnabled("E") && condD,
             isRuleEnabled("F") && condE,
-            isRuleEnabled("G") && condF
+            isRuleEnabled("G") && condF,
+            isRuleEnabled("H") && condH,
+            isRuleEnabled("I") && condI
           ];
 
           if (triggers.some(Boolean)){
