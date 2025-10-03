@@ -5,6 +5,7 @@
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <style>
     :root{
       --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
@@ -87,12 +88,14 @@
   </style>
 </head>
 <body>
+<div id="page-content">
   <header>
     <div class="wrap">
       <h1>📊 Statistiche Orari Profumeria</h1>
       <div class="badges">
         <div class="badge" id="isoBadge">Settimana ISO: …</div>
         <div class="badge" id="updBadge">Aggiornato: …</div>
+        <button id="btnPrint" class="badge" style="cursor:pointer">📄 Esporta PDF</button>
       </div>
       <div id="rangeInfo" class="range">Dati elaborati dal — al —</div>
     </div>
@@ -139,7 +142,6 @@
           </li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
-            <!-- verrà popolato in JS con checkbox a sinistra -->
             <ul id="rulesList" class="rules-list"></ul>
           </li>
         </ul>
@@ -205,6 +207,7 @@
       </div>
     </section>
   </main>
+</div>
 
   <script>
     // === CONFIG LETTURA ===
@@ -374,7 +377,7 @@
             saveHome();
             recomputeHistoricEvents();
             buildRowsAndMetrics();
-            try{ evaluatePlan(); }catch(_){}; 
+            try{ evaluatePlan(); }catch(_){};
           });
         });
       }
@@ -461,16 +464,16 @@
             const monFestivo = (monVal || "").toLowerCase() === 'festivo';
 
             // condizioni originarie
-            const condA = friHome && satHome && sunHome;          // Ven+Sab+Dom "a casa"
-            const condB = satHome && sunHome && monHome;          // Sab+Dom+Lun "a casa"
-            const condC = sunHome && monHome;                     // Dom+Lun "a casa"
-            const condD = sunHome && monFestivo;                  // Dom "a casa" + lun festivo
-            const condE = friFestivo && satHome && sunHome;       // Ven festivo + Sab "a casa" + Dom "a casa"
-            const condF = satHome && sunHome && monFestivo;       // Sab+Dom "a casa" + lun festivo
-            const condG = satHome && sunHome;                     // Sab+Dom "a casa"
+            const condA = friHome && satHome && sunHome;         // Ven+Sab+Dom "a casa"
+            const condB = satHome && sunHome && monHome;         // Sab+Dom+Lun "a casa"
+            const condC = sunHome && monHome;                    // Dom+Lun "a casa"
+            const condD = sunHome && monFestivo;                 // Dom "a casa" + lun festivo
+            const condE = friFestivo && satHome && sunHome;      // Ven festivo + Sab "a casa" + Dom "a casa"
+            const condF = satHome && sunHome && monFestivo;      // Sab+Dom "a casa" + lun festivo
+            const condG = satHome && sunHome;                    // Sab+Dom "a casa"
             // nuove
-            const condH = satHome;                                // Solo Sabato "a casa"
-            const condI = sunHome;                                // Solo Domenica "a casa"
+            const condH = satHome;                               // Solo Sabato "a casa"
+            const condI = sunHome;                               // Solo Domenica "a casa"
 
             const triggers = [
               isRuleEnabled("A") && condA,
@@ -817,8 +820,8 @@
           const p = plan[m.key];
 
           if (arrSum(p) === 0){
-            rows.push({label:m.label, icon:'ℹ️', verdict:'Nessun evento pianificato per questa voce'}); 
-            neutral++; 
+            rows.push({label:m.label, icon:'ℹ️', verdict:'Nessun evento pianificato per questa voce'});
+            neutral++;
             continue;
           }
 
@@ -917,6 +920,52 @@
       }
 
       document.getElementById('btnSave').addEventListener('click', savePlanToSheet);
+
+      // === PDF EXPORT (FIXED) ===
+      document.getElementById('btnPrint').addEventListener('click', () => {
+        const elementToPrint = document.getElementById('page-content');
+        const tableWrappers = elementToPrint.querySelectorAll('.table-wrap');
+        const buttonsToHide = elementToPrint.querySelectorAll('#btnEval, #btnReset, #btnSave, #btnPrint, #chkCumulative');
+
+        // --- PREPARA LA PAGINA PER LA STAMPA ---
+        // 1. Rimuovi temporaneamente gli stili che creano problemi con la cattura
+        tableWrappers.forEach(wrapper => {
+            wrapper.style.maxHeight = 'none';
+            wrapper.style.overflow = 'visible';
+        });
+        // 2. Nascondi i pulsanti per non includerli nel PDF
+        buttonsToHide.forEach(btn => btn.style.visibility = 'hidden');
+
+        const now = new Date();
+        const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const filename = `Statistiche_Profumeria_${ymd}.pdf`;
+
+        const opt = {
+            margin: [10, 5, 10, 5],
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                // Opzioni che aiutano a catturare l'intero contenuto
+                windowWidth: elementToPrint.scrollWidth,
+                windowHeight: elementToPrint.scrollHeight
+            },
+            jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
+        };
+
+        // --- GENERA IL PDF ---
+        html2pdf().from(elementToPrint).set(opt).save().then(() => {
+            // --- RIPRISTINA LA PAGINA DOPO LA STAMPA ---
+            // 1. Ripristina gli stili originali
+            tableWrappers.forEach(wrapper => {
+                wrapper.style.maxHeight = ''; // Ripristina il valore di default del CSS
+                wrapper.style.overflow = '';  // Ripristina il valore di default del CSS
+            });
+            // 2. Rendi nuovamente visibili i pulsanti
+            buttonsToHide.forEach(btn => btn.style.visibility = 'visible');
+        });
+    });
 
     })().catch(err=>{
       console.error(err);
