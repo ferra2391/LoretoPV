@@ -88,6 +88,7 @@
   </style>
 </head>
 <body>
+<div id="page-content">
   <header>
     <div class="wrap">
       <h1>📊 Statistiche Orari Profumeria</h1>
@@ -206,6 +207,7 @@
       </div>
     </section>
   </main>
+</div>
 
   <script>
     // === CONFIG LETTURA ===
@@ -919,31 +921,51 @@
 
       document.getElementById('btnSave').addEventListener('click', savePlanToSheet);
 
-      // === PDF EXPORT ===
+      // === PDF EXPORT (FIXED) ===
       document.getElementById('btnPrint').addEventListener('click', () => {
-          const element = document.querySelector('main.wrap');
-          const now = new Date();
-          const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-          const filename = `Statistiche_Profumeria_${ymd}.pdf`;
+        const elementToPrint = document.getElementById('page-content');
+        const tableWrappers = elementToPrint.querySelectorAll('.table-wrap');
+        const buttonsToHide = elementToPrint.querySelectorAll('#btnEval, #btnReset, #btnSave, #btnPrint, #chkCumulative');
 
-          const opt = {
-              margin: [5, 5, 10, 5], // [top, left, bottom, right] in mm
-              filename: filename,
-              image: { type: 'jpeg', quality: 0.98 },
-              html2canvas: { scale: 2, useCORS: true, logging: false },
-              jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
-          };
+        // --- PREPARA LA PAGINA PER LA STAMPA ---
+        // 1. Rimuovi temporaneamente gli stili che creano problemi con la cattura
+        tableWrappers.forEach(wrapper => {
+            wrapper.style.maxHeight = 'none';
+            wrapper.style.overflow = 'visible';
+        });
+        // 2. Nascondi i pulsanti per non includerli nel PDF
+        buttonsToHide.forEach(btn => btn.style.visibility = 'hidden');
 
-          // Nasconde i pulsanti di azione per una stampa pulita
-          const elementsToHide = document.querySelectorAll('#btnEval, #btnReset, #btnSave, #btnPrint, #chkCumulative');
-          elementsToHide.forEach(el => el.style.visibility = 'hidden');
+        const now = new Date();
+        const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const filename = `Statistiche_Profumeria_${ymd}.pdf`;
 
-          html2pdf().from(element).set(opt).save().then(() => {
-              // Ri-mostra i pulsanti dopo aver generato il PDF
-              elementsToHide.forEach(el => el.style.visibility = 'visible');
-          });
-      });
+        const opt = {
+            margin: [10, 5, 10, 5],
+            filename: filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: {
+                scale: 2,
+                useCORS: true,
+                // Opzioni che aiutano a catturare l'intero contenuto
+                windowWidth: elementToPrint.scrollWidth,
+                windowHeight: elementToPrint.scrollHeight
+            },
+            jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
+        };
 
+        // --- GENERA IL PDF ---
+        html2pdf().from(elementToPrint).set(opt).save().then(() => {
+            // --- RIPRISTINA LA PAGINA DOPO LA STAMPA ---
+            // 1. Ripristina gli stili originali
+            tableWrappers.forEach(wrapper => {
+                wrapper.style.maxHeight = ''; // Ripristina il valore di default del CSS
+                wrapper.style.overflow = '';  // Ripristina il valore di default del CSS
+            });
+            // 2. Rendi nuovamente visibili i pulsanti
+            buttonsToHide.forEach(btn => btn.style.visibility = 'visible');
+        });
+    });
 
     })().catch(err=>{
       console.error(err);
