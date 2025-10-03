@@ -919,7 +919,7 @@
 
       document.getElementById('btnSave').addEventListener('click', savePlanToSheet);
 
-      // === PDF EXPORT ===
+     // === PDF EXPORT ===
       document.getElementById('btnPrint').addEventListener('click', () => {
         // 1. Create a new container for the printable content
         const printableContent = document.createElement('div');
@@ -927,22 +927,25 @@
         // 2. Clone the header, hide the print button in the clone, and append it
         const headerClone = document.querySelector('header').cloneNode(true);
         const printButtonInClone = headerClone.querySelector('#btnPrint');
-        if(printButtonInClone) printButtonInClone.style.display = 'none';
+        if (printButtonInClone) printButtonInClone.style.display = 'none';
         printableContent.appendChild(headerClone);
 
         // 3. Create a new <main> element for the printable sections
+        const mainElement = document.querySelector('main.wrap');
         const mainForPrint = document.createElement('main');
-        mainForPrint.className = 'wrap'; // Keep the styling
+        mainForPrint.className = mainElement.className;
 
-        // 4. Clone the first two sections and append them to the new main element
-        const sectionsToPrint = document.querySelectorAll('main.wrap > section');
-        if (sectionsToPrint.length > 0) mainForPrint.appendChild(sectionsToPrint[0].cloneNode(true));
-        if (sectionsToPrint.length > 1) mainForPrint.appendChild(sectionsToPrint[1].cloneNode(true));
+        // 4. Clone the first two sections using a more robust selector
+        const sectionsToPrint = mainElement.querySelectorAll('section:nth-of-type(-n+2)');
+        sectionsToPrint.forEach(sec => mainForPrint.appendChild(sec.cloneNode(true)));
         printableContent.appendChild(mainForPrint);
-
-        // 5. Add the temporary element to the body off-screen to allow it to be rendered
+        
+        // 5. Add the temporary element to the body, making it invisible but renderable
         printableContent.style.position = 'absolute';
-        printableContent.style.left = '-9999px';
+        printableContent.style.top = '0';
+        printableContent.style.left = '0';
+        printableContent.style.zIndex = '-1'; // Place it behind everything else
+        printableContent.style.opacity = '0'; // Make it fully transparent
         document.body.appendChild(printableContent);
 
         const now = new Date();
