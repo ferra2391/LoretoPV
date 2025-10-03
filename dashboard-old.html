@@ -1,10 +1,11 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
   <title>Statistiche Orari Profumeria</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <style>
     :root{
       --bg:#f6f7fb; --card:#ffffff; --border:#e6e8f0; --muted:#6b7280; --ink:#0f172a;
@@ -16,7 +17,6 @@
     header{ position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid var(--border) }
     .wrap{ max-width: 1680px; margin:0 auto; padding:18px 20px; }
 
-    /* HEADER centrato */
     header .wrap{ display:flex; flex-direction:column; align-items:center; text-align:center; }
     h1{ margin:0; font-size:22px; color:var(--head); }
     .badges{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; justify-content:center; }
@@ -37,7 +37,6 @@
     tbody tr:nth-child(even) td{ background:#fafafa }
     tbody tr:hover td{ background:#f1f5f9 }
     th:first-child, td:first-child{ text-align:left; width:180px }
-    /* prima colonna sticky */
     th:first-child{ position: sticky; left: 0; z-index: 3; }
     td:first-child{ position: sticky; left: 0; z-index: 1; background:#fff; }
 
@@ -80,6 +79,12 @@
 
     .home-chooser{ display:flex; flex-wrap:wrap; gap:10px; margin:10px 0 6px }
     .home-chooser label{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#fff; font-size:12px; cursor:pointer }
+
+    /* Checkbox dentro alle frasi delle regole */
+    .rules-list{ list-style:none; margin:6px 0 0 0; padding-left:0 }
+    .rules-list li{ display:flex; align-items:flex-start; gap:8px; margin:6px 0 }
+    .rules-list input[type="checkbox"]{ margin-top:2px }
+    .rules-list b{ white-space:nowrap }
   </style>
 </head>
 <body>
@@ -89,6 +94,7 @@
       <div class="badges">
         <div class="badge" id="isoBadge">Settimana ISO: …</div>
         <div class="badge" id="updBadge">Aggiornato: …</div>
+        <button id="btnPrint" class="badge" style="cursor:pointer">📄 Esporta PDF</button>
       </div>
       <div id="rangeInfo" class="range">Dati elaborati dal — al —</div>
     </div>
@@ -135,19 +141,11 @@
           </li>
           <li><b>Settimana ISO</b>: lunedì–domenica (la settimana 01 è quella che contiene il 4 gennaio).</li>
           <li><b>Scatta un evento (ancorato alla domenica) se si verifica almeno uno tra:</b>
-            <ul>
-              <li><b>Venerdì + Sabato + Domenica</b> tutti e tre “a casa”.</li>
-              <li><b>Sabato + Domenica + Lunedì</b> tutti e tre “a casa”.</li>
-              <li><b>Sabato + Domenica</b> entrambi “a casa”.</li>
-              <li><b>Domenica + Lunedì</b> entrambi “a casa”.</li>
-              <li><b>Domenica</b> “a casa” + <b>lunedì successivo festivo</b>.</li>
-              <li><b>Venerdì festivo</b> + <b>Sabato</b> “a casa” + <b>Domenica</b> “a casa”.</li>
-              <li><b>Sabato + Domenica</b> entrambi “a casa” + <b>lunedì successivo festivo</b>.</li>
-            </ul>
+            <ul id="rulesList" class="rules-list"></ul>
           </li>
         </ul>
 
-        <h3>Bollini e bilanciamento</h3>
+        <h3 style="margin-top:16px">Bollini e bilanciamento</h3>
         <ul>
           <li><span class="ring red">52</span> = <b>outlier</b> (valore più distante dalla quota equa). Un solo bollino per colonna.</li>
           <li><b>Colonna verde</b> = differenze irrilevanti: <code>max(quota) − min(quota) ≤ 5pp</code>, quota = <code>val/somma</code>.</li>
@@ -178,6 +176,7 @@
           <label class="badge" style="cursor:pointer"><input id="chkCumulative" type="checkbox" checked /> Valuta sul cumulato</label>
           <button id="btnEval" class="badge" style="cursor:pointer">Valuta pianificazione</button>
           <button id="btnReset" class="badge" style="cursor:pointer">Reset</button>
+          <button id="btnSave" class="badge" style="cursor:pointer">Convalida & scrivi</button>
         </div>
       </div>
       <div class="card-body">
@@ -209,12 +208,14 @@
   </main>
 
   <script>
-    // === CONFIG: link Google Sheet pubblicato ===
-    const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTiGFO5sDWqthBzsCJ08wsG5bM4BjidbyZBwRXt32IuAkcr0BWhCmSTA-ZyayT07w/pubhtml?gid=876412715&single=true";
+    // === CONFIG LETTURA ===
+    const PUBHTML = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH7VUajc9qeQfzNkrOYNykZUALgfqN6nYzE3hNdQEO0uOk__412V2kkjAlxPeUKxftldk3qXyfCDg5/pubhtml?gid=0&single=true";
+    // === CONFIG SCRITTURA ===
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwR9Lc0ogxIB4waTSawg16u2EeMZnM5lI6-EOfgekzGcBvIw1Mu0432P9xXjB5nor_P/exec";
+    const SAVE_TOKEN = 'ProfumeriaLoreto';
 
     // === UTILS ===
     function getPubInfo(pubhtml){
-      // CORREZIONE: Regex corrette per interpretare l'URL
       const idm = pubhtml.match(/\/d\/e\/([^\/]+)\/pubhtml/);
       if(!idm) throw new Error("PUB_ID non riconosciuto nel link.");
       const gidm = pubhtml.match(/[?&]gid=(\d+)/);
@@ -228,8 +229,6 @@
       if (parsed.errors.length) console.warn("PapaParse errors:", parsed.errors);
       return parsed.data;
     }
-
-    // Date utils (tutte in locale per evitare slittamenti)
     function parseItaDate(dstr){
       if (!dstr) return null;
       const ymd = dstr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -266,7 +265,6 @@
 
     // === APP ===
     (async function main(){
-      // Badges
       const now = new Date();
       document.getElementById("isoBadge").textContent = `Settimana ISO: ${isoWeek(now)}/${isoWeekYear(now)}`;
       document.getElementById("updBadge").textContent = `Aggiornato: ${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT')}`;
@@ -341,12 +339,11 @@
         rangeEl.textContent = `Dati elaborati: nessuna data valida trovata nel foglio`;
       }
 
-      // Helpers storico
       const allDates = Array.from(byDate.keys()).sort();
       const getCell = (ymd,col) => ((byDate.get(ymd)||{})[col]) || "";
       function isoWeekKey(date){ return `${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2,"0")}`; }
 
-      // Scelta "a casa"
+      // === Scelta "a casa" ===
       const HOME_LS_KEY = 'home-events-v1';
       const HOME_ALL = ["ferie","riposo","rec","104","malattia","festivo"];
       const HOME_DEFAULT = ["ferie","riposo","104","malattia"];
@@ -383,7 +380,65 @@
         });
       }
 
-      // Eventi “a casa” storici (FESTIVO letto dal foglio)
+      // === Regole evento-domenica (con H/I nuovi) ===
+      const RULE_KEYS = ["A","B","C","D","E","F","G","H","I"];
+      const RULE_LABELS = {
+        A: 'Venerdì + Sabato + Domenica tutti “a casa”',
+        B: 'Sabato + Domenica + Lunedì tutti “a casa”',
+        C: 'Sabato + Domenica entrambi “a casa”',
+        D: 'Domenica + Lunedì entrambi “a casa”',
+        E: 'Domenica “a casa” + lunedì successivo festivo',
+        F: 'Venerdì festivo + Sabato “a casa” + Domenica “a casa”',
+        G: 'Sabato + Domenica “a casa” + lunedì successivo festivo',
+        H: 'Solo Sabato “a casa”',
+        I: 'Solo Domenica “a casa”'
+      };
+      // default: A..G on, H/I off
+      const RULE_DEFAULT = new Set(["A","B","C","D","E","F","G"]);
+      const RULE_LS_KEY = "weekend-rule-flags-v2";
+
+      let ruleSet = loadRuleSet();
+      function loadRuleSet(){
+        try{
+          const raw = JSON.parse(localStorage.getItem(RULE_LS_KEY) || "null");
+          if (Array.isArray(raw)){
+            const s = new Set(raw.filter(k => RULE_KEYS.includes(k)));
+            return s.size ? s : new Set(RULE_DEFAULT);
+          }
+          return new Set(RULE_DEFAULT);
+        } catch {
+          return new Set(RULE_DEFAULT);
+        }
+      }
+      function saveRuleSet(){ localStorage.setItem(RULE_LS_KEY, JSON.stringify(Array.from(ruleSet))); }
+      function isRuleEnabled(key){ return ruleSet.has(key); }
+
+      // Checkbox dentro alle frasi (a sinistra)
+      function renderRulesList(){
+        const host = document.getElementById("rulesList");
+        if (!host) return;
+        host.innerHTML = [
+          "A","B","C","D","E","F","G","H","I"
+        ].map(k=>{
+          const checked = isRuleEnabled(k) ? ' checked' : '';
+          return `<li>
+            <input type="checkbox" id="rule-${k}" value="${k}"${checked} />
+            <label for="rule-${k}"><b>${k})</b> ${RULE_LABELS[k]}</label>
+          </li>`;
+        }).join("");
+        host.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+          chk.addEventListener('change', ()=>{
+            const k = chk.value;
+            if (chk.checked) ruleSet.add(k); else ruleSet.delete(k);
+            saveRuleSet();
+            recomputeHistoricEvents();
+            buildRowsAndMetrics();
+            try{ evaluatePlan(); }catch(_){}
+          });
+        });
+      }
+
+      // Eventi “a casa” storici (ancorati alla domenica)
       function recomputeHistoricEvents(){
         for (const col of dipCols){ stats[col].eventsWeeksAll = new Set(); }
         for (const ymd of allDates){
@@ -406,16 +461,31 @@
             const friFestivo = (friVal || "").toLowerCase() === 'festivo';
             const monFestivo = (monVal || "").toLowerCase() === 'festivo';
 
-            const condA = friHome && satHome && sunHome;             // Ven+Sab+Dom a casa
-            const condB = satHome && sunHome && monHome;             // Sab+Dom+Lun a casa
-            const condC = sunHome && monHome;                        // Dom+Lun a casa
-            const condD = sunHome && monFestivo;                     // Dom a casa + Lun FESTIVO
-            const condE = friFestivo && satHome && sunHome;          // Ven FESTIVO + Sab a casa + Dom a casa
-            const condF = satHome && sunHome && monFestivo;          // Sab+Dom a casa + Lun FESTIVO
-            const condG = satHome && sunHome; // NEW: Sab+Dom entrambi "a casa"
+            // condizioni originarie
+            const condA = friHome && satHome && sunHome;         // Ven+Sab+Dom "a casa"
+            const condB = satHome && sunHome && monHome;         // Sab+Dom+Lun "a casa"
+            const condC = sunHome && monHome;                    // Dom+Lun "a casa"
+            const condD = sunHome && monFestivo;                 // Dom "a casa" + lun festivo
+            const condE = friFestivo && satHome && sunHome;      // Ven festivo + Sab "a casa" + Dom "a casa"
+            const condF = satHome && sunHome && monFestivo;      // Sab+Dom "a casa" + lun festivo
+            const condG = satHome && sunHome;                    // Sab+Dom "a casa"
+            // nuove
+            const condH = satHome;                               // Solo Sabato "a casa"
+            const condI = sunHome;                               // Solo Domenica "a casa"
 
+            const triggers = [
+              isRuleEnabled("A") && condA,
+              isRuleEnabled("B") && condB,
+              isRuleEnabled("C") && condG,
+              isRuleEnabled("D") && condC,
+              isRuleEnabled("E") && condD,
+              isRuleEnabled("F") && condE,
+              isRuleEnabled("G") && condF,
+              isRuleEnabled("H") && condH,
+              isRuleEnabled("I") && condI
+            ];
 
-            if (condA || condB || condC || condD || condE || condF || condG){
+            if (triggers.some(Boolean)){
               stats[col].eventsWeeksAll.add(wKey);
             }
           }
@@ -425,8 +495,8 @@
       // Riepilogo + Note
       const today = new Date();
       const curW = isoWeek(today), curY = isoWeekYear(today);
-      const tbody = document.getElementById("riepilogo");
-      const notesBody = document.getElementById("notesBody");
+      const tbodyEl = document.getElementById("riepilogo");
+      const notesBodyEl = document.getElementById("notesBody");
 
       const DOT_KEYS = new Set(["aperture","chiusure","apertureWEFest","chiusureWEFest","ferie","_eventsN"]);
       const headerIdByKey = {
@@ -504,7 +574,7 @@
           if (st.balanced) th?.classList.add("balanced-col","balanced-outline");
         }
 
-        tbody.innerHTML = rowsRender.map((r, rowIdx) => {
+        tbodyEl.innerHTML = rowsRender.map((r, rowIdx) => {
           function cell(key, extraCls="", isNum=true){
             const isDotCol = DOT_KEYS.has(key);
             const st = isDotCol ? columnStatus[key] : null;
@@ -540,14 +610,15 @@
           adviceObjective(perMetricValues["chiusureWEFest"], labels, "Chiusure nel weekend/festivi"),
           adviceObjective(perMetricValues["_eventsN"], labels, 'Eventi "a casa"')
         ];
-        notesBody.innerHTML = notes.map(n => {
+        notesBodyEl.innerHTML = notes.map(n => {
           const [title, ...rest] = n.split(": ");
           return `<tr><td><b>${title}</b></td><td>${rest.join(": ")}</td></tr>`;
         }).join("");
       }
 
-      // Avvio storico
+      // Avvio storico + UI
       renderHomeChooser();
+      renderRulesList();
       recomputeHistoricEvents();
       buildRowsAndMetrics();
 
@@ -652,7 +723,7 @@
           }
         }
 
-        // Eventi lunghi (ven-sab-dom della settimana + lunedì successivo)
+        // Eventi lunghi (ancorati alla domenica corrente del planner)
         const sun = days7[6];
         const sat = days7[5];
         const fri = days7[4];
@@ -676,16 +747,33 @@
           const friFestivo = (friVal || '').toLowerCase() === 'festivo';
           const monFestivo = (monVal || '').toLowerCase() === 'festivo';
 
+          // condizioni originarie
           const condA = friHome && satHome && sunHome;
           const condB = satHome && sunHome && monHome;
           const condC = sunHome && monHome;
           const condD = sunHome && monFestivo;
           const condE = friFestivo && satHome && sunHome;
           const condF = satHome && sunHome && monFestivo;
-          const condG = satHome && sunHome; // NEW
+          const condG = satHome && sunHome;
+          // nuove
+          const condH = satHome;
+          const condI = sunHome;
 
+          const triggers = [
+            isRuleEnabled("A") && condA,
+            isRuleEnabled("B") && condB,
+            isRuleEnabled("C") && condG,
+            isRuleEnabled("D") && condC,
+            isRuleEnabled("E") && condD,
+            isRuleEnabled("F") && condE,
+            isRuleEnabled("G") && condF,
+            isRuleEnabled("H") && condH,
+            isRuleEnabled("I") && condI
+          ];
 
-          if (condA || condB || condC || condD || condE || condF || condG){ pStats[emp].eventsWeeksAll.add(wKey); }
+          if (triggers.some(Boolean)){
+            pStats[emp].eventsWeeksAll.add(wKey);
+          }
         }
 
         return pStats;
@@ -693,8 +781,6 @@
 
       function evaluatePlan(){
         const pStats = computePlanStats();
-        const feedbackBody = document.getElementById('planFeedback');
-        const summary = document.getElementById('planSummary');
         const cumulative = document.getElementById('chkCumulative')?.checked;
 
         const METRICS = [
@@ -705,11 +791,9 @@
           { key:'_eventsN', label:'Eventi "a casa"' }
         ];
 
-        // Storico (H) e Piano (P)
         const hist = {}; const plan = {};
         for (const m of METRICS){
           if (m.key === '_eventsN'){
-            // settimane evento storiche nell'anno ISO fino a oggi
             hist[m.key] = dipendenti.map(d => {
               const s = stats[d].eventsWeeksAll;
               const arr = Array.from(s).map(k => { const [y,w]=k.split('-W'); return {y:+y,w:+w}; });
@@ -734,8 +818,8 @@
           const p = plan[m.key];
 
           if (arrSum(p) === 0){
-            rows.push({label:m.label, icon:'ℹ️', verdict:'Nessun evento pianificato per questa voce'}); 
-            neutral++; 
+            rows.push({label:m.label, icon:'ℹ️', verdict:'Nessun evento pianificato per questa voce'});
+            neutral++;
             continue;
           }
 
@@ -783,10 +867,88 @@
       }
 
       btnEval.addEventListener('click', evaluatePlan);
+
+      // === CONVALIDA & SCRITTURA SU GOOGLE SHEET ===
+      function buildPlannerEntries() {
+        const entries = [];
+        for (let i = 0; i < daysYMD.length; i++) {
+          const ymd = daysYMD[i];
+          for (const emp of dipendenti) {
+            const v = (saved[emp] && saved[emp][ymd]) || "";
+            if (v && v.trim()) entries.push({ date: ymd, employee: emp, value: v.trim().toLowerCase() });
+          }
+        }
+        return entries;
+      }
+
+      async function savePlanToSheet() {
+        const btn = document.getElementById('btnSave');
+        btn.disabled = true;
+        btn.textContent = 'Invio in corso…';
+
+        const payload = {
+          token: SAVE_TOKEN,
+          gid, // stessa scheda
+          week: { start: daysYMD[0], end: daysYMD[6] },
+          employees: dipendenti,
+          entries: buildPlannerEntries()
+        };
+
+        try {
+          const res = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const out = await res.json();
+          if (!out.ok) throw new Error(out.error || 'Errore server');
+
+          plannerStatus.className = 'pill ok';
+          plannerStatus.textContent = `Convalidato: scritte ${out.updated} celle in "${out.sheetName}"`;
+          plannerBody.querySelectorAll('select').forEach(s => s.disabled = true);
+          btn.textContent = 'Convalidato ✅';
+        } catch (err) {
+          console.error(err);
+          plannerStatus.className = 'pill bad';
+          plannerStatus.textContent = `Errore scrittura: ${err.message}`;
+          btn.textContent = 'Riprova';
+          btn.disabled = false;
+        }
+      }
+
+      document.getElementById('btnSave').addEventListener('click', savePlanToSheet);
+
+      // === PDF EXPORT ===
+      document.getElementById('btnPrint').addEventListener('click', () => {
+          const element = document.querySelector('main.wrap');
+          const now = new Date();
+          const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+          const filename = `Statistiche_Profumeria_${ymd}.pdf`;
+
+          const opt = {
+              margin: [5, 5, 10, 5], // [top, left, bottom, right] in mm
+              filename: filename,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true, logging: false },
+              jsPDF: { unit: 'mm', format: 'a3', orientation: 'landscape' }
+          };
+
+          // Nasconde i pulsanti di azione per una stampa pulita
+          const elementsToHide = document.querySelectorAll('#btnEval, #btnReset, #btnSave, #btnPrint, #chkCumulative');
+          elementsToHide.forEach(el => el.style.visibility = 'hidden');
+
+          html2pdf().from(element).set(opt).save().then(() => {
+              // Ri-mostra i pulsanti dopo aver generato il PDF
+              elementsToHide.forEach(el => el.style.visibility = 'visible');
+          });
+      });
+
+
     })().catch(err=>{
       console.error(err);
       alert("Errore: " + err.message +
-        "\\n- Il documento resta pubblicato come pagina web (OK).\\n- Lettura via export CSV della stessa scheda.");
+        "\n- Il documento resta pubblicato come pagina web (OK).\n- Lettura via export CSV della stessa scheda.");
     });
   </script>
 </body>
